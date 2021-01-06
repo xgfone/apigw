@@ -1,13 +1,13 @@
 # apigw [![Build Status](https://travis-ci.org/xgfone/apigw.svg?branch=master)](https://travis-ci.org/xgfone/apigw) [![GoDoc](https://godoc.org/github.com/xgfone/apigw?status.svg)](http://godoc.org/github.com/xgfone/apigw) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/apigw/master/LICENSE)
 
-Another simple api gateway library implemented by Go.
+Another simple, flexible, high performance api gateway library implemented by Go.
 
 
 ### Features
 - High performance, flexible.
 - Too few core engine codes, about 400~500 lines.
-    ```
-    cloc --exclude-dir=cmd --exclude-dir=plugins --include-lang=Go --quiet .
+    ```shell
+    $ cloc --exclude-dir=cmd --exclude-dir=plugins --include-lang=Go --quiet .
     github.com/AlDanial/cloc v 1.88  T=0.03 s (288.3 files/s, 26918.9 lines/s)
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code
