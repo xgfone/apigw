@@ -12,18 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package forward
+package sd
 
 import (
-	"github.com/xgfone/ship/v3"
+	"context"
+
+	"github.com/xgfone/apigw"
 )
 
-// Backend is used to represent a forwarder backend.
-type Backend interface {
-	Metadata() map[string]interface{}
-}
-
-// Forwarder is used to forward the http request to the backend server.
-type Forwarder interface {
-	Forward(ctx *ship.Context) error
-}
+// ServiceDiscovery is used to monitor a certain route register
+// and update the routes in the gateway.
+type ServiceDiscovery func(context.Context, *apigw.Gateway)

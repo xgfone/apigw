@@ -1,23 +1,38 @@
-# apigw [![Build Status](https://travis-ci.org/xgfone/apigw.svg?branch=master)](https://travis-ci.org/xgfone/apigw) [![GoDoc](https://godoc.org/github.com/xgfone/apigw?status.svg)](http://godoc.org/github.com/xgfone/apigw) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/apigw/master/LICENSE)
+# apigw [![Build Status](https://travis-ci.org/xgfone/apigw.svg?branch=master)](https://travis-ci.org/xgfone/apigw) [![GoDoc](https://godoc.org/github.com/xgfone/apigw?status.svg)](https://pkg.go.dev/github.com/xgfone/apigw) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/apigw/master/LICENSE)
 
 Another simple, flexible, high performance api gateway library implemented by Go.
 
 
 ### Features
 - High performance, flexible.
-- Too few core engine codes, about 400~500 lines.
+- Most of the functions are implemented by the plugin mode.
+- Too few core engine codes, ~500 lines.
     ```shell
-    $ cloc --exclude-dir=cmd --exclude-dir=plugins --include-lang=Go --quiet .
-    github.com/AlDanial/cloc v 1.88  T=0.03 s (288.3 files/s, 26918.9 lines/s)
+    $ cloc --exclude-dir=plugins --not-match-f=_test.go --include-lang=Go --quiet .
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code
     -------------------------------------------------------------------------------
-    Go                               8            105            186            456
+    Go                              11            139            225            510
     -------------------------------------------------------------------------------
-    SUM:                             8            105            186            456
+    SUM:                            11            139            225            510
     -------------------------------------------------------------------------------
     ```
-- Most of the functions are implemented by the plugin mode.
+
+
+### Difference between Middleware and Plugin
+- Plugin is pluggable during running, and run after routing the request.
+- Middleware is unpluggable after running, and run before routing the request.
+
+**Notice:** The framework is based on [ship](https://github.com/xgfone/ship), so it's based on `Path` and `Method` of the request URL to route the request at first, then the api gateway framework takes over the handling and forwards it to one of the backends, such as routing based on the header or rewriting the request.
+
+
+### TODO List
+- [ ] Add some authentications.
+- [ ] Add some built-in plugins and middlewares.
+- [ ] Add the health check for the backend, that's upstream server.
+- [ ] Add the support of a group of the upstream servers as the backend.
+- [ ] Optimize the HTTP backend forwarder.
+- [ ] Others.
 
 
 ## Install
@@ -36,8 +51,8 @@ import (
 	"time"
 
 	"github.com/xgfone/apigw"
-	"github.com/xgfone/apigw/forward"
-	"github.com/xgfone/apigw/forward/endpoint"
+	"github.com/xgfone/apigw/forward/lb"
+	"github.com/xgfone/apigw/forward/lb/backend"
 	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/ship/v3"
 )
@@ -94,22 +109,19 @@ func main() {
 
 	gw := apigw.NewGateway()
 	gw.RegisterMiddlewares(gwMiddleware("middleware1"), gwMiddleware("middleware2"))
-	gw.RoutePluginManager().
-		RegisterPlugin(plugin.NewPlugin("panic", 3, newPanicPlugin)).
-		RegisterPlugin(plugin.NewPlugin("token", 1, newTokenPlugin)).
-		RegisterPlugin(plugin.NewPlugin("log", 2, newLogPlugin))
+	gw.RegisterPlugin(plugin.NewPlugin("panic", 3, newPanicPlugin))
+	gw.RegisterPlugin(plugin.NewPlugin("token", 1, newTokenPlugin))
+	gw.RegisterPlugin(plugin.NewPlugin("log", 2, newLogPlugin))
 
 	// Register the route and its backends.
-	httpClient := endpoint.NewDefaultHTTPClient(100, time.Minute)
-	backend1, _ := endpoint.NewHTTPEndpoint("", "http://127.0.0.1:8001/:path", httpClient)
-	backend2, _ := endpoint.NewHTTPEndpoint("", "http://127.0.0.1:8002/:path", httpClient)
+	backend1, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8001/:path", nil)
+	backend2, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8002/:path", nil)
 
-	forwarder := forward.NewLBForwarder(time.Minute)
+	forwarder := lb.NewForwarder(time.Minute)
 	forwarder.EndpointManager().AddEndpoint(backend1)
 	forwarder.EndpointManager().AddEndpoint(backend2)
 	gw.RegisterRoute(apigw.Route{
 		Host:      "www.example.com",
-		Name:      "test",
 		Path:      "/v1/:path",
 		Method:    http.MethodGet,
 		Forwarder: forwarder,

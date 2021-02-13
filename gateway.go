@@ -16,8 +16,9 @@
 package apigw
 
 import (
+	"fmt"
 	"net/http"
-	"time"
+	"sync"
 
 	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/ship/v3"
@@ -42,15 +43,29 @@ type (
 type Gateway struct {
 	mdws    []Middleware
 	router  *ship.Ship
-	plugins *plugin.Manager
-	timeout time.Duration
+	plugins map[string]plugin.Plugin
+	lock    sync.RWMutex
 }
 
 // NewGateway returns a new Gateway.
 func NewGateway() *Gateway {
-	g := &Gateway{router: ship.Default(), plugins: plugin.NewManager()}
+	g := &Gateway{plugins: make(map[string]plugin.Plugin, 8)}
+	g.router = ship.Default()
+	g.router.Lock = new(sync.RWMutex)
+	g.router.HandleError = g.handleError
 	g.router.Pre(g.handleMiddleware)
 	return g
+}
+
+func (g *Gateway) handleError(ctx *Context, err error) {
+	if !ctx.IsResponded() {
+		switch e := err.(type) {
+		case ship.HTTPError:
+			ctx.BlobText(e.Code, e.CT, e.Error())
+		default:
+			ctx.Text(http.StatusInternalServerError, err.Error())
+		}
+	}
 }
 
 // Router returns the underlying http router.
@@ -95,5 +110,42 @@ func (g *Gateway) ResetMiddlewares(mws ...Middleware) {
 	g.mdws = append([]Middleware{}, mws...)
 }
 
-// RoutePluginManager returns the manager of the route plugin.
-func (g *Gateway) RoutePluginManager() *plugin.Manager { return g.plugins }
+// RegisterPlugin registers the plugin.
+func (g *Gateway) RegisterPlugin(p plugin.Plugin) *Gateway {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
+	name := p.Name()
+	if _, ok := g.plugins[name]; ok {
+		panic(fmt.Errorf("the plugin named '%s' has been registered", name))
+	}
+	g.plugins[name] = p
+	return g
+}
+
+// UnregisterPlugin unregisters the plugin named pname.
+func (g *Gateway) UnregisterPlugin(pname string) *Gateway {
+	g.lock.Lock()
+	delete(g.plugins, pname)
+	g.lock.Unlock()
+	return g
+}
+
+// Plugin returns the plugin by the name. Return nil instead if not exist.
+func (g *Gateway) Plugin(pname string) plugin.Plugin {
+	g.lock.RLock()
+	p := g.plugins[pname]
+	g.lock.RUnlock()
+	return p
+}
+
+// Plugins returns all the registered plugins.
+func (g *Gateway) Plugins() plugin.Plugins {
+	g.lock.RLock()
+	plugins := make(plugin.Plugins, 0, len(g.plugins))
+	for _, p := range g.plugins {
+		plugins = append(plugins, p)
+	}
+	g.lock.RUnlock()
+	return plugins
+}

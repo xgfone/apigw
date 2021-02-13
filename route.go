@@ -24,19 +24,18 @@ import (
 
 // RoutePluginConfig is used to configure the route plugin.
 type RoutePluginConfig struct {
-	PluginName   string
-	PluginConfig interface{}
+	PluginName   string      `json:"plugin_name"`
+	PluginConfig interface{} `json:"plugin_config,omitempty"`
 }
 
 // Route represents a route.
 type Route struct {
-	Host   string
-	Name   string
-	Path   string
-	Method string
+	Host   string `json:"host,omitempty"`
+	Path   string `json:"path"`
+	Method string `json:"method"`
 
-	Forwarder     forward.Forwarder
-	PluginConfigs []RoutePluginConfig
+	Forwarder     forward.Forwarder   `json:"-"`
+	PluginConfigs []RoutePluginConfig `json:"plugin_configs,omitempty"`
 }
 
 // RegisterRoute registers the route.
@@ -47,7 +46,7 @@ func (g *Gateway) RegisterRoute(route Route) error {
 
 	plugins := make(plugin.Plugins, len(route.PluginConfigs))
 	for i, rpc := range route.PluginConfigs {
-		plugin := g.plugins.Plugin(rpc.PluginName)
+		plugin := g.Plugin(rpc.PluginName)
 		if plugin == nil {
 			return fmt.Errorf("no the pre-route plugin named '%s'", rpc.PluginName)
 		}
@@ -67,7 +66,6 @@ func (g *Gateway) RegisterRoute(route Route) error {
 
 	return g.router.AddRoute(ship.RouteInfo{
 		Host:    route.Host,
-		Name:    route.Name,
 		Path:    route.Path,
 		Method:  route.Method,
 		Handler: handler,
@@ -79,7 +77,6 @@ func (g *Gateway) RegisterRoute(route Route) error {
 func (g *Gateway) UnregisterRoute(route Route) error {
 	return g.router.DelRoute(ship.RouteInfo{
 		Host:   route.Host,
-		Name:   route.Name,
 		Path:   route.Path,
 		Method: route.Method,
 	})

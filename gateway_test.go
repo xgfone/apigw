@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xgfone/apigw/forward"
-	"github.com/xgfone/apigw/forward/endpoint"
+	"github.com/xgfone/apigw/forward/lb"
+	"github.com/xgfone/apigw/forward/lb/backend"
 	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/ship/v3"
 )
@@ -77,22 +77,20 @@ func ExampleGateway() {
 
 	gw := NewGateway()
 	gw.RegisterMiddlewares(gwMiddleware("middleware1"), gwMiddleware("middleware2"))
-	gw.RoutePluginManager().
-		RegisterPlugin(plugin.NewPlugin("panic", 3, newPanicPlugin)).
-		RegisterPlugin(plugin.NewPlugin("token", 1, newTokenPlugin)).
-		RegisterPlugin(plugin.NewPlugin("log", 2, newLogPlugin))
+	gw.RegisterPlugin(plugin.NewPlugin("panic", 3, newPanicPlugin))
+	gw.RegisterPlugin(plugin.NewPlugin("token", 1, newTokenPlugin))
+	gw.RegisterPlugin(plugin.NewPlugin("log", 2, newLogPlugin))
 
 	// Register the route and its backends.
-	httpClient := endpoint.NewDefaultHTTPClient(100, time.Minute)
-	backend1, _ := endpoint.NewHTTPEndpoint("", "http://127.0.0.1:8001/:path", httpClient)
-	backend2, _ := endpoint.NewHTTPEndpoint("", "http://127.0.0.1:8002/:path", httpClient)
+	httpClient := backend.NewDefaultHTTPClient(100, time.Minute)
+	backend1, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8001/:path", httpClient)
+	backend2, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8002/:path", httpClient)
 
-	forwarder := forward.NewLBForwarder(time.Minute)
+	forwarder := lb.NewForwarder(time.Minute)
 	forwarder.EndpointManager().AddEndpoint(backend1)
 	forwarder.EndpointManager().AddEndpoint(backend2)
 	gw.RegisterRoute(Route{
 		Host:      "www.example.com",
-		Name:      "test",
 		Path:      "/v1/:path",
 		Method:    http.MethodGet,
 		Forwarder: forwarder,

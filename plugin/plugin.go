@@ -24,9 +24,16 @@ import (
 
 // Plugin represents a plugin to handle the request.
 type Plugin interface {
+	// The description of the plugin, such as "Plugin(name=XXX)".
 	fmt.Stringer
+
+	// The name of the plugin, such as "XXX".
 	Name() string
+
+	// The bigger the value, the higher the priority, and the plugin is called preferentially.
 	Priority() int
+
+	// Create a new middleware to execute the plugin when triggering the route.
 	Plugin(config interface{}) (ship.Middleware, error)
 }
 

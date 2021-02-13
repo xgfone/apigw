@@ -12,18 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package forward
+package lb_test
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/xgfone/apigw/forward/lb"
+	"github.com/xgfone/apigw/forward/lb/backend"
 	"github.com/xgfone/ship/v3"
 )
 
-// Backend is used to represent a forwarder backend.
-type Backend interface {
-	Metadata() map[string]interface{}
-}
+func BenchmarkLBForwarder(b *testing.B) {
+	forwarder := lb.NewForwarder(0)
+	forwarder.EndpointManager().AddEndpoint(backend.NewNoopBackend("server1", true))
+	forwarder.EndpointManager().AddEndpoint(backend.NewNoopBackend("server2", true))
 
-// Forwarder is used to forward the http request to the backend server.
-type Forwarder interface {
-	Forward(ctx *ship.Context) error
+	req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1", nil)
+	ctx := ship.NewContext(0, 0)
+	ctx.SetReqRes(req, httptest.NewRecorder())
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		forwarder.Forward(ctx)
+	}
 }

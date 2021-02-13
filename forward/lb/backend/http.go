@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package endpoint
+package backend
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xgfone/apigw/forward"
+	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/ship/v3"
 )
@@ -47,13 +47,13 @@ func NewDefaultHTTPClient(maxConn int, timeout time.Duration) *http.Client {
 	}
 }
 
-// NewHTTPEndpoint returns a new HTTP endpoint.
+// NewHTTPBackend returns a new HTTP backend.
 //
 // If method is empty, it will use the method of the source request.
 //
 // It supports the paramether for the path part in backendURL,
 // such as "/path/:param1/to/:param2/somewhere".
-func NewHTTPEndpoint(method, backendURL string, client *http.Client) (loadbalancer.Endpoint, error) {
+func NewHTTPBackend(method, backendURL string, client *http.Client) (lb.Backend, error) {
 	switch method = strings.ToUpper(method); method {
 	case "":
 	case http.MethodGet:
@@ -83,7 +83,7 @@ func NewHTTPEndpoint(method, backendURL string, client *http.Client) (loadbalanc
 	}
 
 	host := base64.StdEncoding.EncodeToString([]byte(u.Hostname()))
-	return httpEndpoint{
+	return httpBackend{
 		u:     u,
 		paths: paths,
 
@@ -94,7 +94,7 @@ func NewHTTPEndpoint(method, backendURL string, client *http.Client) (loadbalanc
 	}, nil
 }
 
-type httpEndpoint struct {
+type httpBackend struct {
 	u     *url.URL
 	paths []string
 
@@ -104,7 +104,7 @@ type httpEndpoint struct {
 	client *http.Client
 }
 
-func (e httpEndpoint) getBackendURL(ctx *ship.Context) (string, error) {
+func (e httpBackend) getBackendURL(ctx *ship.Context) (string, error) {
 	if e.u == nil {
 		return e.url, nil
 	}
@@ -122,7 +122,7 @@ func (e httpEndpoint) getBackendURL(ctx *ship.Context) (string, error) {
 			} else if v = ctx.GetHeader(value); v != "" {
 				value = v
 			} else {
-				return "", fmt.Errorf("invalid url param named '%s'", value)
+				return "", fmt.Errorf("no value for path param named '%s'", value)
 			}
 		}
 		paths[i] = value
@@ -133,39 +133,44 @@ func (e httpEndpoint) getBackendURL(ctx *ship.Context) (string, error) {
 	return u.String(), nil
 }
 
-func (e httpEndpoint) String() string {
-	return fmt.Sprintf("Endpoint(%s)", e.url)
+func (e httpBackend) Metadata() map[string]interface{} {
+	return map[string]interface{}{"method": e.method, "url": e.url}
 }
 
-func (e httpEndpoint) IsHealthy(c context.Context) bool {
+func (e httpBackend) String() string {
+	return fmt.Sprintf("Backend(%s)", e.url)
+}
+
+func (e httpBackend) IsHealthy(c context.Context) bool {
+	// TODO(xgfone): Check whether the backend node is healthy.
 	return true
 }
 
-func (e httpEndpoint) RoundTrip(c context.Context, r loadbalancer.Request) (loadbalancer.Response, error) {
-	req := r.(forward.HTTPRequest)
+func (e httpBackend) RoundTrip(c context.Context, r loadbalancer.Request) (loadbalancer.Response, error) {
+	ctx := r.(lb.Request).Context()
 
-	url, err := e.getBackendURL(req.Context)
+	url, err := e.getBackendURL(ctx)
 	if err != nil {
-		return nil, ship.ErrBadGateway.New(err)
+		return nil, ship.ErrBadRequest.New(err)
 	}
 
 	method := e.method
 	if method == "" {
-		method = req.Method()
+		method = ctx.Method()
 	}
 
-	nreq, err := ship.NewRequestWithContext(c, method, url, req.Body())
+	nreq, err := ship.NewRequestWithContext(c, method, url, ctx.Body())
 	if err != nil {
 		return nil, ship.ErrBadGateway.New(err)
 	}
 
-	nreq.Header = req.Request().Header
+	nreq.Header = ctx.Request().Header
 	if nreq.Header.Get(ship.HeaderXRealIP) == "" && nreq.Header.Get(ship.HeaderXForwardedFor) == "" {
-		nreq.Header.Set(ship.HeaderXRealIP, req.RealIP())
+		nreq.Header.Set(ship.HeaderXRealIP, ctx.RealIP())
 	}
 
-	req.Logger().Debugf("Forwarding HTTP Request '%s %s' -> '%s %s'",
-		req.Method(), req.RequestURI(), method, url)
+	ctx.Logger().Debugf("Forwarding HTTP Request '%s %s' -> '%s %s'",
+		ctx.Method(), ctx.RequestURI(), method, url)
 
 	var resp *http.Response
 	if e.client == nil {
@@ -178,12 +183,12 @@ func (e httpEndpoint) RoundTrip(c context.Context, r loadbalancer.Request) (load
 	}
 	defer resp.Body.Close()
 
-	respHeader := req.RespHeader()
+	respHeader := ctx.RespHeader()
 	for k, v := range resp.Header {
 		respHeader[k] = v
 	}
 
-	req.SetHeader(ship.HeaderServer, e.host)
-	err = req.Stream(resp.StatusCode, resp.Header.Get(ship.HeaderContentType), resp.Body)
+	ctx.SetHeader(ship.HeaderServer, e.host)
+	err = ctx.Stream(resp.StatusCode, resp.Header.Get(ship.HeaderContentType), resp.Body)
 	return nil, err
 }
