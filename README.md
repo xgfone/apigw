@@ -1,6 +1,6 @@
 # apigw [![Build Status](https://travis-ci.org/xgfone/apigw.svg?branch=master)](https://travis-ci.org/xgfone/apigw) [![GoDoc](https://godoc.org/github.com/xgfone/apigw?status.svg)](https://pkg.go.dev/github.com/xgfone/apigw) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/apigw/master/LICENSE)
 
-Another simple, flexible, high performance api gateway library implemented by Go.
+Another simple, flexible, high performance api gateway library implemented by Go. For the binary program, see the another repository [apigateway](https://github.com/xgfone/apigateway).
 
 
 ### Features
