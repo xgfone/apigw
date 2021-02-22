@@ -76,8 +76,8 @@ import (
 )
 
 func gwMiddleware(name string) apigw.Middleware {
-	return func(next ship.Handler) ship.Handler {
-		return func(ctx *ship.Context) error {
+	return func(next apigw.Handler) apigw.Handler {
+		return func(ctx *apigw.Context) error {
 			// TODO: modity Method, Host or Path to shape the request.
 			ctx.Logger().Infof("%s before", name)
 			err := next(ctx)
