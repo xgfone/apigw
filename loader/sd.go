@@ -59,3 +59,12 @@ func UnregisterServiceDiscoveryLoader(name string) { delete(sdLoaders, name) }
 //
 // Return nil if it does not exist.
 func GetServiceDiscoveryLoader(name string) ServiceDiscoveryLoader { return sdLoaders[name] }
+
+// GetServiceDiscoveryLoaders returns the name list of all the service discovery loaders.
+func GetServiceDiscoveryLoaders() []string {
+	names := make([]string, 0, len(sdLoaders))
+	for name := range sdLoaders {
+		names = append(names, name)
+	}
+	return names
+}

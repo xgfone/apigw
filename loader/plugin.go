@@ -59,3 +59,12 @@ func UnregisterPluginLoader(name string) { delete(pluginLoaders, name) }
 //
 // Return nil if it does not exist.
 func GetPluginLoader(name string) PluginLoader { return pluginLoaders[name] }
+
+// GetPluginLoaders returns the name list of all the plugin loaders.
+func GetPluginLoaders() []string {
+	names := make([]string, 0, len(pluginLoaders))
+	for name := range pluginLoaders {
+		names = append(names, name)
+	}
+	return names
+}

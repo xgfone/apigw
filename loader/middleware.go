@@ -59,3 +59,12 @@ func UnregisterMiddlewareLoader(name string) { delete(mwLoaders, name) }
 //
 // Return nil if it does not exist.
 func GetMiddlewareLoader(name string) MiddlewareLoader { return mwLoaders[name] }
+
+// GetMiddlewareLoaders returns the name list of all the middleware loaders.
+func GetMiddlewareLoaders() []string {
+	names := make([]string, 0, len(mwLoaders))
+	for name := range mwLoaders {
+		names = append(names, name)
+	}
+	return names
+}
