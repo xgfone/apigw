@@ -5,18 +5,36 @@ Another simple, flexible, high performance api gateway library implemented by Go
 
 ### Features
 - High performance, flexible.
-- Most of the functions are implemented by the plugin mode.
+    ```shell
+    # Environment: 8C8GB, NIC 1000Mb/s, CentOS 7.4.1708 64bit, Go1.16
+    $ wrk -t 8 -c 1000 -d 30s --latency -H 'Host: www.exampletest.com' http://192.168.1.10/v1/test
+    Running 30s test @ http://192.168.1.10/v1/test
+      8 threads and 1000 connections
+      Thread Stats   Avg      Stdev     Max   +/- Stdev
+        Latency    39.04ms   21.66ms 331.90ms   73.64%
+        Req/Sec     3.17k   428.99     8.31k    84.21%
+      Latency Distribution
+         50%   35.77ms
+         75%   50.02ms
+         90%   66.15ms
+         99%  103.17ms
+      756985 requests in 30.01s, 109.73MB read
+      Socket errors: connect 0, read 0, write 231, timeout 0
+    Requests/sec:  25223.57
+    Transfer/sec:  3.66MB
+    ````
 - Too few core engine codes, ~500 lines.
     ```shell
     $ cloc --exclude-dir=plugins --not-match-f=_test.go --include-lang=Go --quiet .
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code
     -------------------------------------------------------------------------------
-    Go                              11            139            225            510
+    Go                              11            140            227            522
     -------------------------------------------------------------------------------
-    SUM:                            11            139            225            510
+    SUM:                            11            140            227            522
     -------------------------------------------------------------------------------
     ```
+- Most of the functions are implemented by the plugin mode.
 
 
 ### Difference between Middleware and Plugin
@@ -31,7 +49,7 @@ Another simple, flexible, high performance api gateway library implemented by Go
 - [ ] Add some built-in plugins and middlewares.
 - [ ] Add the health check for the backend, that's upstream server.
 - [ ] Add the support of a group of the upstream servers as the backend.
-- [ ] Optimize the HTTP backend forwarder.
+- [x] Optimize the HTTP backend forwarder.
 - [ ] Others.
 
 
