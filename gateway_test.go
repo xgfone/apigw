@@ -82,9 +82,8 @@ func ExampleGateway() {
 	gw.RegisterPlugin(plugin.NewPlugin("log", 2, newLogPlugin))
 
 	// Register the route and its backends.
-	httpClient := backend.NewDefaultHTTPClient(100, time.Minute)
-	backend1, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8001/:path", httpClient)
-	backend2, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8002/:path", httpClient)
+	backend1, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8001/:path", nil)
+	backend2, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8002/:path", nil)
 
 	forwarder := lb.NewForwarder(time.Minute)
 	forwarder.EndpointManager().AddEndpoint(backend1)

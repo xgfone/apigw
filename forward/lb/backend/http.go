@@ -21,31 +21,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/ship/v3"
 )
-
-// NewDefaultHTTPClient creates a new http.Client with the default configuration.
-func NewDefaultHTTPClient(maxConn int, timeout time.Duration) *http.Client {
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig:     nil,
-			TLSHandshakeTimeout: time.Second * 5,
-
-			MaxIdleConns:        maxConn / 10,
-			MaxIdleConnsPerHost: maxConn / 100,
-			MaxConnsPerHost:     maxConn,
-
-			IdleConnTimeout:       timeout,
-			ResponseHeaderTimeout: timeout,
-			ExpectContinueTimeout: timeout,
-		},
-	}
-}
 
 // NewHTTPBackend returns a new HTTP backend.
 //
