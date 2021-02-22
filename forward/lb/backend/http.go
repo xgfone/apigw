@@ -21,11 +21,19 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/ship/v3"
 )
+
+func init() {
+	tp := http.DefaultTransport.(*http.Transport)
+	tp.IdleConnTimeout = time.Second * 30
+	tp.MaxIdleConnsPerHost = 100
+	tp.MaxIdleConns = 0
+}
 
 // NewHTTPBackend returns a new HTTP backend.
 //
