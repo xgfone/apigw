@@ -16,15 +16,24 @@ package lb
 
 import "sync"
 
-var bgms sync.Map
+var (
+	bgms     = make(map[string]*BackendGroupManager)
+	bgmslock sync.RWMutex
+)
 
 // RegisterBackendGroupManager registers and returns the backend group manager.
 //
 // If the backend group manager has been registered, do nothing
 // and return the registered backend group manager.
 func RegisterBackendGroupManager(m *BackendGroupManager) *BackendGroupManager {
-	actual, _ := bgms.LoadOrStore(m.Name(), m)
-	return actual.(*BackendGroupManager)
+	bgmslock.Lock()
+	if bgm, ok := bgms[m.name]; ok {
+		m = bgm
+	} else {
+		bgms[m.name] = m
+	}
+	bgmslock.Unlock()
+	return m
 }
 
 // UnregisterBackendGroupManager unregisters the backend group by the name,
@@ -32,44 +41,49 @@ func RegisterBackendGroupManager(m *BackendGroupManager) *BackendGroupManager {
 //
 // If the backend group does not exist, return nil.
 func UnregisterBackendGroupManager(name string) *BackendGroupManager {
-	if value, loaded := bgms.LoadAndDelete(name); loaded {
-		return value.(*BackendGroupManager)
+	bgmslock.Lock()
+	m, ok := bgms[name]
+	if ok {
+		delete(bgms, name)
 	}
-	return nil
+	bgmslock.Unlock()
+	return m
 }
 
 // GetBackendGroupManager returns the backend group manager by the name.
 //
 // If the backend group manager does not exist, return nil.
 func GetBackendGroupManager(name string) (m *BackendGroupManager) {
-	bgms.Range(func(key, value interface{}) bool {
-		if key.(string) == name {
-			m = value.(*BackendGroupManager)
-			return false
-		}
-		return true
-	})
+	bgmslock.RLock()
+	m = bgms[name]
+	bgmslock.RUnlock()
 	return
 }
 
 // GetBackendGroupManagers returns all the backend group manager.
 func GetBackendGroupManagers() (ms []*BackendGroupManager) {
-	bgms.Range(func(key, value interface{}) bool {
-		ms = append(ms, value.(*BackendGroupManager))
-		return true
-	})
+	bgmslock.RLock()
+	ms = make([]*BackendGroupManager, 0, len(bgms))
+	for _, m := range bgms {
+		ms = append(ms, m)
+	}
+	bgmslock.RUnlock()
 	return
 }
 
 // BackendGroupManager is used to manage the backend group.
 type BackendGroupManager struct {
 	name   string
-	groups sync.Map
+	lock   sync.RWMutex
+	groups map[string]*BackendGroup
 }
 
 // NewBackendGroupManager returns a new backend group manager.
 func NewBackendGroupManager(name string) *BackendGroupManager {
-	return &BackendGroupManager{name: name}
+	return &BackendGroupManager{
+		name:   name,
+		groups: make(map[string]*BackendGroup, 4),
+	}
 }
 
 // Name returns the name of the backend group manager.
@@ -78,63 +92,77 @@ func (m *BackendGroupManager) Name() string { return m.name }
 // Add adds the backend group. If the backend group has been added,
 // do nothing and return the added backend group.
 func (m *BackendGroupManager) Add(bg *BackendGroup) *BackendGroup {
-	actual, _ := m.groups.LoadOrStore(bg.Name(), bg)
-	return actual.(*BackendGroup)
+	m.lock.Lock()
+	if g, ok := m.groups[bg.name]; ok {
+		bg = g
+	} else {
+		m.groups[bg.name] = bg
+	}
+	m.lock.Unlock()
+	return bg
 }
 
 // Delete deletes the backend group by the name, and returns the added
 // backend group. If the backend group does not exist, return nil.
 func (m *BackendGroupManager) Delete(backendGroupName string) *BackendGroup {
-	if value, loaded := m.groups.LoadAndDelete(backendGroupName); loaded {
-		return value.(*BackendGroup)
+	m.lock.Lock()
+	g, ok := m.groups[backendGroupName]
+	if ok {
+		delete(m.groups, backendGroupName)
 	}
-	return nil
+	m.lock.Unlock()
+	return g
 }
 
 // BackendGroup returns the backend group by the name.
 //
 // If the backend group does not exist, return nil.
 func (m *BackendGroupManager) BackendGroup(name string) *BackendGroup {
-	if value, ok := m.groups.Load(name); ok {
-		return value.(*BackendGroup)
-	}
-	return nil
+	m.lock.RLock()
+	g := m.groups[name]
+	m.lock.RUnlock()
+	return g
 }
 
 // BackendGroups returns all the backend groups.
 func (m *BackendGroupManager) BackendGroups() (bgs []*BackendGroup) {
-	m.groups.Range(func(key, value interface{}) bool {
-		bgs = append(bgs, value.(*BackendGroup))
-		return true
-	})
+	m.lock.RLock()
+	bgs = make([]*BackendGroup, 0, len(m.groups))
+	for _, g := range m.groups {
+		bgs = append(bgs, g)
+	}
+	m.lock.RUnlock()
 	return
 }
 
 // BackendGroupsByUpdaterName returns the list of the backend groups
 // which add the updater.
 func (m *BackendGroupManager) BackendGroupsByUpdaterName(name string) (bgs []*BackendGroup) {
-	m.groups.Range(func(key, value interface{}) bool {
-		if bg := value.(*BackendGroup); bg.GetUpdater(name) != nil {
-			bgs = append(bgs, bg)
+	m.lock.RLock()
+	for _, g := range m.groups {
+		if g.GetUpdater(name) != nil {
+			bgs = append(bgs, g)
 		}
-		return true
-	})
+	}
+	m.lock.RUnlock()
 	return
 }
 
 // DelUpdater deletes the backend updater from all the backend group.
 func (m *BackendGroupManager) DelUpdater(u BackendUpdater) {
-	m.groups.Range(func(key, value interface{}) bool {
-		value.(*BackendGroup).DelUpdater(u)
-		return true
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	for _, g := range m.groups {
+		g.DelUpdater(u)
+	}
 }
 
 // Close releases all the resources.
 func (m *BackendGroupManager) Close() {
-	m.groups.Range(func(key, value interface{}) bool {
-		value.(*BackendGroup).Close()
-		m.groups.Delete(key)
-		return true
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	for _, g := range m.groups {
+		g.Close()
+	}
+	m.groups = nil
 }
