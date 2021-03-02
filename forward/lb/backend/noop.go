@@ -24,37 +24,36 @@ import (
 
 var _ lb.Backend = noopBackend{}
 
+func init() {
+	RegisterBuilder(NewBuilder("noop", func(c BuilderContext) (lb.Backend, error) {
+		name, _ := c.MetaData["name"].(string)
+		if name == "" {
+			return nil, fmt.Errorf("missing the string name")
+		}
+		return NewNoopBackend(name, c.UserData), nil
+	}))
+}
+
 // NewNoopBackend returns a new noop backend, which is only used to test
 // the performance of the gateway framework.
-func NewNoopBackend(name string, noresp ...bool) lb.Backend {
-	var notresp bool
-	if len(noresp) > 0 {
-		notresp = noresp[0]
-	}
-	return noopBackend{name: name, notresp: notresp}
+func NewNoopBackend(name string, userdata interface{}) lb.Backend {
+	return noopBackend{name: name, data: userdata}
 }
 
 type noopBackend struct {
-	name    string
-	notresp bool
+	name string
+	data interface{}
 }
 
-func (b noopBackend) Metadata() map[string]interface{} {
-	return map[string]interface{}{"name": b.name, "noresp": b.notresp}
+func (b noopBackend) Type() string                     { return "noop" }
+func (b noopBackend) String() string                   { return b.name }
+func (b noopBackend) IsHealthy(c context.Context) bool { return true }
+func (b noopBackend) HealthCheck() lb.HealthCheck      { return lb.HealthCheck{} }
+func (b noopBackend) UserData() interface{}            { return b.data }
+func (b noopBackend) MetaData() map[string]interface{} {
+	return map[string]interface{}{"name": b.name}
 }
-
-func (b noopBackend) String() string {
-	return fmt.Sprintf("Backend(%s)", b.name)
-}
-
-func (b noopBackend) IsHealthy(c context.Context) bool {
-	return true
-}
-
 func (b noopBackend) RoundTrip(c context.Context, r loadbalancer.Request) (
 	loadbalancer.Response, error) {
-	if b.notresp {
-		return nil, nil
-	}
 	return nil, r.(lb.Request).Context().Text(200, b.name)
 }

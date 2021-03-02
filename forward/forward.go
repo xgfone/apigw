@@ -15,15 +15,14 @@
 package forward
 
 import (
+	"io"
+
 	"github.com/xgfone/ship/v3"
 )
-
-// Backend is used to represent a forwarder backend.
-type Backend interface {
-	Metadata() map[string]interface{}
-}
 
 // Forwarder is used to forward the http request to the backend server.
 type Forwarder interface {
 	Forward(ctx *ship.Context) error
+	Name() string
+	io.Closer
 }

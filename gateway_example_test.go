@@ -1,50 +1,18 @@
-# apigw [![Build Status](https://travis-ci.org/xgfone/apigw.svg?branch=master)](https://travis-ci.org/xgfone/apigw) [![GoDoc](https://godoc.org/github.com/xgfone/apigw?status.svg)](https://pkg.go.dev/github.com/xgfone/apigw) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/apigw/master/LICENSE)
+// Copyright 2021 xgfone
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-Another simple, flexible, high performance api gateway library implemented by Go. For the binary program, see the another repository [apigateway](https://github.com/xgfone/apigateway).
-
-
-### Features
-- High performance, flexible. See [Example](#example) and [apigateway](https://github.com/xgfone/apigateway).
-- Support the virtual host, and different hosts has their own independent routes and NotFound.
-- Support the health check for the backend, that's upstream server.
-- Support the group of the upstream servers as the backend.
-- Support to customize the backend forwarder of the route.
-- Most of the functions are implemented by the plugin mode.
-- Too few core engine codes, ~1200 lines.
-    ```shell
-    $ cloc --exclude-dir=plugins --not-match-f=_test.go --include-lang=Go --quiet .
-    -------------------------------------------------------------------------------
-    Language                     files          blank        comment           code
-    -------------------------------------------------------------------------------
-    Go                              16            280            398            1198
-    -------------------------------------------------------------------------------
-    SUM:                            16            280            398            1198
-    -------------------------------------------------------------------------------
-    ```
-
-
-### Difference between Middleware and Plugin
-- Plugin is pluggable during running, and run after routing the request.
-- Middleware is unpluggable after running, and run before routing the request.
-
-**Notice:** The framework is based on [ship](https://github.com/xgfone/ship), so it's based on `Path` and `Method` of the request URL to route the request at first, then the api gateway framework takes over the handling and forwards it to one of the backends, such as routing based on the header or rewriting the request.
-
-
-### TODO List
-- [ ] Add some authentications.
-- [ ] Add some built-in plugins and middlewares.
-- [ ] Others.
-
-
-## Install
-```shell
-$ go get -u github.com/xgfone/apigw
-```
-
-
-## Example
-```go
-package main
+package apigw_test
 
 import (
 	"fmt"
@@ -57,8 +25,6 @@ import (
 	"github.com/xgfone/apigw/forward/lb/backend"
 	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/go-service/loadbalancer"
-	"github.com/xgfone/goapp"
-	"github.com/xgfone/goapp/log"
 	"github.com/xgfone/ship/v3"
 )
 
@@ -109,16 +75,11 @@ func newPanicPlugin(config interface{}) (apigw.Middleware, error) {
 	}, nil
 }
 
-func main() {
+func ExampleGateway() {
 	host := "www.example.com"
-
-	// Parse the CLI arguments and the configuration file,
-	// and initialize the logging.
-	goapp.Init("")
 
 	// Initialize the gateway.
 	gw := apigw.NewGateway()
-	gw.Router().SetLogger(log.GetDefaultLogger())
 
 	// You can set the customized logger.
 	// gw.Router().SetLogger(logger)
@@ -218,4 +179,3 @@ func main() {
 	// no route: host=www.example.com, method=GET, path=/v2/test
 	//
 }
-```

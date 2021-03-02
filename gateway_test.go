@@ -16,122 +16,59 @@ package apigw
 
 import (
 	"net/http"
-	"strings"
-	"time"
-
-	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/apigw/forward/lb/backend"
-	"github.com/xgfone/apigw/plugin"
-	"github.com/xgfone/ship/v3"
+	"net/http/httptest"
+	"testing"
 )
 
-func gwMiddleware(name string) Middleware {
-	return func(next Handler) Handler {
-		return func(ctx *Context) error {
-			// TODO: modity Method, Host or Path to shape the request.
-			ctx.Logger().Infof("%s before", name)
-			err := next(ctx)
-			ctx.Logger().Infof("%s after", name)
-			return err
-		}
+func TestGateway_NotFound(t *testing.T) {
+	gw := NewGateway()
+	gw.SetDefaultNotFound(func(c *Context) error { return c.Text(200, "notfound") })
+
+	// 1. no domain host
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "http://www.example.com", nil)
+	gw.ServeHTTP(rec, req)
+	if s := rec.Body.String(); s != "notfound" {
+		t.Errorf("expect '%s', but got '%s'\n", "notfound", s)
+	}
+
+	gw.SetHostNotFound(`[a-zA-z0-9]+\.example\.com`, func(ctx *Context) (err error) {
+		return ctx.Text(404, "www.example.com not found")
+	})
+
+	// 2. has domain host and no routes
+	if err := gw.AddHost(`[a-zA-z0-9]+\.example\.com`); err != nil {
+		t.Errorf("fail to add host: %v", err)
+	}
+	rec = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodGet, "http://www.example.com", nil)
+	gw.ServeHTTP(rec, req)
+	if s := rec.Body.String(); s != "www.example.com not found" {
+		t.Errorf("expect '%s', but got '%s'\n", "www.example.com not found", s)
+	}
+
+	// 3. has domain host and routes
+	_, err := gw.RegisterRoute(Route{
+		Host:      `[a-zA-z0-9]+\.example\.com`,
+		Path:      "/",
+		Method:    http.MethodGet,
+		Forwarder: testForwarder{name: "test"},
+	})
+	if err != nil {
+		t.Errorf("fail to register route: %v\n", err)
+	}
+	rec = httptest.NewRecorder()
+	req, _ = http.NewRequest(http.MethodGet, "http://www.example.com", nil)
+	gw.ServeHTTP(rec, req)
+	if s := rec.Body.String(); s != "OK" {
+		t.Errorf("expect '%s', but got '%s'\n", "OK", s)
 	}
 }
 
-func newTokenPlugin(config interface{}) (Middleware, error) {
-	token := config.(string)
-	return func(next Handler) Handler {
-		return func(ctx *Context) error {
-			auth := strings.TrimSpace(ctx.GetHeader(ship.HeaderAuthorization))
-			if auth == "" {
-				return ship.ErrUnauthorized
-			} else if index := strings.IndexByte(auth, ' '); index < 0 {
-				return ship.ErrUnauthorized.Newf("invalid auth '%s'", auth)
-			} else if authType := strings.TrimSpace(auth[:index]); authType != "token" {
-				return ship.ErrUnauthorized.Newf("invalid auth type '%s'", authType)
-			} else if authToken := strings.TrimSpace(auth[index+1:]); authToken != token {
-				return ship.ErrUnauthorized.Newf("invalid auth token '%s'", authToken)
-			}
-
-			return next(ctx)
-		}
-	}, nil
+type testForwarder struct {
+	name string
 }
 
-func newLogPlugin(config interface{}) (Middleware, error) {
-	return func(next Handler) Handler {
-		return func(ctx *Context) error {
-			ctx.Logger().Infof("request from '%s'", ctx.RemoteAddr())
-			return next(ctx)
-		}
-	}, nil
-}
-
-func newPanicPlugin(config interface{}) (Middleware, error) {
-	return func(next Handler) Handler {
-		return func(ctx *Context) error { panic(next(ctx)) }
-	}, nil
-}
-
-func ExampleGateway() {
-	token := "authentication_token"
-
-	gw := NewGateway()
-	gw.RegisterMiddlewares(gwMiddleware("middleware1"), gwMiddleware("middleware2"))
-	gw.RegisterPlugin(plugin.NewPlugin("panic", 3, newPanicPlugin))
-	gw.RegisterPlugin(plugin.NewPlugin("token", 1, newTokenPlugin))
-	gw.RegisterPlugin(plugin.NewPlugin("log", 2, newLogPlugin))
-
-	// Register the route and its backends.
-	backend1, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8001/:path", nil)
-	backend2, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8002/:path", nil)
-
-	forwarder := lb.NewForwarder(time.Minute)
-	forwarder.EndpointManager().AddEndpoint(backend1)
-	forwarder.EndpointManager().AddEndpoint(backend2)
-	gw.RegisterRoute(Route{
-		Host:      "www.example.com",
-		Path:      "/v1/:path",
-		Method:    http.MethodGet,
-		Forwarder: forwarder,
-		PluginConfigs: []RoutePluginConfig{
-			{PluginName: "token", PluginConfig: token},
-			{PluginName: "log"},
-
-			/// We don't configure the panic plugin for the current route,
-			/// so it won't be used when triggering the route.
-			// {PluginName: "panic"},
-		},
-	})
-
-	// Start HTTP server.
-	gw.Router().Start("127.0.0.1:80").Wait()
-
-	////// Send the http request to test api gateway.
-	//
-	// $ curl -i http://127.0.0.1:12345/v1/test -H 'Host: www.example.com'
-	// HTTP/1.1 401 Unauthorized
-	// Date: Wed, 06 Jan 2021 21:21:25 GMT
-	// Content-Length: 0
-	//
-	//
-	// $ curl -i http://127.0.0.1:12345/v1/test -H 'Host: www.example.com' -H 'Authorization: token authentication_token'
-	// HTTP/1.1 200 OK
-	// Content-Length: 29
-	// Content-Type: application/json
-	// Date: Wed, 06 Jan 2021 21:21:56 GMT
-	// Server: MTI3LjAuMC4x
-	//
-	// {"backend":"127.0.0.1:8002"}
-	//
-	//
-	// $ curl -i http://127.0.0.1:12345/v1/test -H 'Host: www.example.com' -H 'Authorization: token authentication_token'
-	// HTTP/1.1 200 OK
-	// Content-Length: 29
-	// Content-Type: application/json
-	// Date: Wed, 06 Jan 2021 21:21:59 GMT
-	// Server: MTI3LjAuMC4x
-	//
-	// {"backend":"127.0.0.1:8001"}
-	//
-	//
-}
+func (f testForwarder) Forward(c *Context) error { return c.Text(200, "OK") }
+func (f testForwarder) Name() string             { return f.name }
+func (f testForwarder) Close() error             { return nil }

@@ -25,7 +25,7 @@ import (
 )
 
 func BenchmarkLBForwarder(b *testing.B) {
-	forwarder := lb.NewForwarder(0)
+	forwarder := lb.NewForwarder("", 0)
 	forwarder.EndpointManager().AddEndpoint(backend.NewNoopBackend("server1", true))
 	forwarder.EndpointManager().AddEndpoint(backend.NewNoopBackend("server2", true))
 

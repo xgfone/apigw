@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -35,13 +36,21 @@ func init() {
 	tp.MaxIdleConns = 0
 }
 
+// HTTPBackendConfig is used to configure the http backend.
+type HTTPBackendConfig struct {
+	Client        *http.Client
+	UserData      interface{}
+	HealthCheck   lb.HealthCheck
+	HealthChecker loadbalancer.HealthChecker
+}
+
 // NewHTTPBackend returns a new HTTP backend.
 //
 // If method is empty, it will use the method of the source request.
 //
 // It supports the paramether for the path part in backendURL,
 // such as "/path/:param1/to/:param2/somewhere".
-func NewHTTPBackend(method, backendURL string, client *http.Client) (lb.Backend, error) {
+func NewHTTPBackend(method, backendURL string, config *HTTPBackendConfig) (lb.Backend, error) {
 	switch method = strings.ToUpper(method); method {
 	case "":
 	case http.MethodGet:
@@ -62,12 +71,46 @@ func NewHTTPBackend(method, backendURL string, client *http.Client) (lb.Backend,
 		return nil, err
 	}
 
+	addr := u.Host
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		if !strings.HasPrefix(err.Error(), "missing port") {
+			return nil, err
+		}
+
+		switch u.Scheme {
+		case "http":
+			addr = net.JoinHostPort(addr, "80")
+		case "https":
+			addr = net.JoinHostPort(addr, "443")
+		default:
+			return nil, fmt.Errorf("unknown http scheme '%s'", u.Scheme)
+		}
+	}
+
+	if u.Path == "" {
+		u.Path = "/"
+	}
+
+	var arg bool
 	upaths := strings.Split(u.Path, "/")
 	paths := make([]string, 0, len(upaths))
 	for i, path := range upaths {
-		if i == 0 || path != "" {
+		if i == 0 && path == "" {
 			paths = append(paths, path)
+		} else if path != "" {
+			paths = append(paths, path)
+			if path[0] == ':' {
+				arg = true
+			}
 		}
+	}
+	if !arg {
+		paths = nil
+	}
+
+	var conf HTTPBackendConfig
+	if config != nil {
+		conf = *config
 	}
 
 	host := base64.StdEncoding.EncodeToString([]byte(u.Hostname()))
@@ -75,10 +118,14 @@ func NewHTTPBackend(method, backendURL string, client *http.Client) (lb.Backend,
 		u:     u,
 		paths: paths,
 
-		url:    u.String(),
-		host:   host,
-		method: method,
-		client: client,
+		url:      u.String(),
+		addr:     addr,
+		host:     host,
+		method:   method,
+		client:   conf.Client,
+		check:    conf.HealthChecker,
+		userdata: conf.UserData,
+		hc:       conf.HealthCheck,
 	}, nil
 }
 
@@ -86,18 +133,22 @@ type httpBackend struct {
 	u     *url.URL
 	paths []string
 
-	url    string
-	host   string
-	method string
-	client *http.Client
+	url      string
+	addr     string
+	host     string
+	method   string
+	client   *http.Client
+	check    loadbalancer.HealthChecker
+	userdata interface{}
+	hc       lb.HealthCheck
 }
 
 func (e httpBackend) getBackendURL(ctx *ship.Context) (string, error) {
-	if e.u == nil {
+	_len := len(e.paths)
+	if _len == 0 {
 		return e.url, nil
 	}
 
-	_len := len(e.paths)
 	paths := make([]string, _len)
 	for i := 0; i < _len; i++ {
 		value := e.paths[i]
@@ -121,17 +172,25 @@ func (e httpBackend) getBackendURL(ctx *ship.Context) (string, error) {
 	return u.String(), nil
 }
 
-func (e httpBackend) Metadata() map[string]interface{} {
+func (e httpBackend) Type() string                { return "http" }
+func (e httpBackend) String() string              { return e.url }
+func (e httpBackend) HealthCheck() lb.HealthCheck { return e.hc }
+func (e httpBackend) UserData() interface{}       { return e.userdata }
+func (e httpBackend) MetaData() map[string]interface{} {
 	return map[string]interface{}{"method": e.method, "url": e.url}
 }
 
-func (e httpBackend) String() string {
-	return fmt.Sprintf("Backend(%s)", e.url)
-}
-
 func (e httpBackend) IsHealthy(c context.Context) bool {
-	// TODO(xgfone): Check whether the backend node is healthy.
-	return true
+	if e.check != nil {
+		return e.check(c, e.url) == nil
+	}
+
+	dialer := net.Dialer{Timeout: time.Second}
+	if conn, err := dialer.DialContext(c, "tcp", e.addr); err == nil {
+		conn.Close()
+		return true
+	}
+	return false
 }
 
 func (e httpBackend) RoundTrip(c context.Context, r loadbalancer.Request) (loadbalancer.Response, error) {

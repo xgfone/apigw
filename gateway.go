@@ -41,17 +41,26 @@ type (
 
 // Gateway is an api gateway.
 type Gateway struct {
-	mdws    []Middleware
-	router  *ship.Ship
-	plugins map[string]plugin.Plugin
-	lock    sync.RWMutex
+	mdws      []Middleware
+	router    *ship.Ship
+	routes    map[string]map[string]Route // map[Host]map[RouteKey]Route
+	plugins   map[string]plugin.Plugin    // map[PluginName]plugin.Plugin
+	notfounds map[string]Handler          // map[Host]Handler
+	notfound  Handler
+	lock      sync.RWMutex
 }
 
 // NewGateway returns a new Gateway.
 func NewGateway() *Gateway {
-	g := &Gateway{plugins: make(map[string]plugin.Plugin, 8)}
+	g := &Gateway{
+		routes:    make(map[string]map[string]Route, 128),
+		plugins:   make(map[string]plugin.Plugin, 8),
+		notfounds: make(map[string]Handler),
+		notfound:  ship.NotFoundHandler(),
+	}
 	g.router = ship.Default()
 	g.router.Lock = new(sync.RWMutex)
+	g.router.NotFound = g.NotFound
 	g.router.HandleError = g.handleError
 	g.router.Pre(g.handleMiddleware)
 	return g
@@ -66,6 +75,64 @@ func (g *Gateway) handleError(ctx *Context, err error) {
 			ctx.Text(http.StatusInternalServerError, err.Error())
 		}
 	}
+}
+
+// NotFound is the handler of the router to handle the NotFound.
+func (g *Gateway) NotFound(ctx *Context) error {
+	handler := g.notfound
+	g.lock.RLock()
+	if h, ok := g.notfounds[ctx.Host()]; ok {
+		handler = h
+	} else if h, ok = g.notfounds[ctx.RouteInfo.Host]; ok {
+		handler = h
+	}
+	g.lock.RUnlock()
+	return handler(ctx)
+}
+
+// SetHostNotFound sets the NotFound handler of the host router.
+//
+// If the handler is nil, unset the setting of the NotFound handler of host.
+func (g *Gateway) SetHostNotFound(host string, handler Handler) {
+	g.lock.Lock()
+	if handler == nil {
+		delete(g.notfounds, host)
+	} else {
+		g.notfounds[host] = handler
+	}
+	g.lock.Unlock()
+	return
+}
+
+// SetDefaultNotFound sets the default NotFound handler.
+func (g *Gateway) SetDefaultNotFound(notFound Handler) {
+	if notFound == nil {
+		panic("the NotFound handler must not be nil")
+	}
+	g.lock.Lock()
+	g.notfound = notFound
+	g.lock.Unlock()
+}
+
+// HostNotFounds returns the list of the NotFound handlers of all the host.
+func (g *Gateway) HostNotFounds() map[string]Handler {
+	g.lock.RLock()
+	nfs := make(map[string]Handler, len(g.notfounds))
+	for host, nf := range g.notfounds {
+		nfs[host] = nf
+	}
+	g.lock.RUnlock()
+	return nfs
+}
+
+// HostNotFound returns the NotFound handler of the host.
+//
+// If the NotFound handler does not exist, return nil.
+func (g *Gateway) HostNotFound(host string) Handler {
+	g.lock.RLock()
+	nf := g.notfounds[host]
+	g.lock.RUnlock()
+	return nf
 }
 
 // Router returns the underlying http router.
