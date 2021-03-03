@@ -106,6 +106,17 @@ func (bg *BackendGroup) GetUpdater(name string) (u BackendUpdater) {
 	return
 }
 
+// GetUpdaters returns all the backend updaters.
+func (bg *BackendGroup) GetUpdaters() (us []BackendUpdater) {
+	bg.lock.RLock()
+	us = make([]BackendUpdater, 0, len(bg.updaters))
+	for _, u := range bg.updaters {
+		us = append(us, u)
+	}
+	bg.lock.RUnlock()
+	return
+}
+
 // AddUpdater adds the updater, which will be called when adding or deleting
 // a backend.
 func (bg *BackendGroup) AddUpdater(u BackendUpdater) {
