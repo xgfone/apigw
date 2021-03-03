@@ -16,28 +16,19 @@ package lb
 
 import (
 	"context"
-	"sync"
 	"time"
 
+	"github.com/xgfone/apigw"
 	"github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/ship/v3"
 )
-
-// Request is used to represent the request context passed to the backend.
-type Request interface {
-	loadbalancer.Request
-	Context() *ship.Context
-}
 
 // Forwarder is a forwarder based on LB.
 type Forwarder struct {
 	*loadbalancer.HealthCheck
 	*loadbalancer.LoadBalancer
-	NewRequest func(*ship.Context) Request
+	NewRequest func(*apigw.Context) Request
 	Timeout    time.Duration
-
-	lock   sync.RWMutex
-	groups []*BackendGroup
 }
 
 // NewForwarder returns a new Forwarder.
@@ -162,7 +153,7 @@ func (f *Forwarder) Backends() []Backend {
 }
 
 // Forward implements the interface Forwarder.
-func (f *Forwarder) Forward(ctx *ship.Context) (err error) {
+func (f *Forwarder) Forward(ctx *apigw.Context) (err error) {
 	c := context.Background()
 	if f.Timeout > 0 {
 		var cancel func()
@@ -172,7 +163,7 @@ func (f *Forwarder) Forward(ctx *ship.Context) (err error) {
 
 	var req Request
 	if f.NewRequest == nil {
-		req = request{c: ctx}
+		req = simpleRequest{ctx}
 	} else {
 		req = f.NewRequest(ctx)
 	}
@@ -183,11 +174,3 @@ func (f *Forwarder) Forward(ctx *ship.Context) (err error) {
 
 	return
 }
-
-type request struct {
-	c *ship.Context
-}
-
-func (r request) RemoteAddrString() string { return r.c.RemoteAddr() }
-
-func (r request) Context() *ship.Context { return r.c }

@@ -16,12 +16,11 @@ package apigw
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"reflect"
 	"strings"
 
-	"github.com/xgfone/apigw/forward"
-	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/ship/v3"
 )
 
@@ -36,6 +35,13 @@ func (rpc1 RoutePluginConfig) equal(rpc2 RoutePluginConfig) bool {
 		reflect.DeepEqual(rpc1.PluginConfig, rpc2.PluginConfig)
 }
 
+// Forwarder is used to forward the http request to the backend server.
+type Forwarder interface {
+	Forward(ctx *Context) error
+	Name() string
+	io.Closer
+}
+
 // Route represents a route.
 type Route struct {
 	// Required
@@ -44,10 +50,10 @@ type Route struct {
 	Method string `json:"method" validate:"required"`
 
 	// Optional
-	Forwarder     forward.Forwarder   `json:"-"`
+	Forwarder     Forwarder           `json:"-"`
 	PluginConfigs []RoutePluginConfig `json:"plugin_configs,omitempty"`
 
-	handler ship.Handler
+	handler Handler
 }
 
 // NewRoute returns a new Route.
@@ -176,7 +182,7 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 	}
 
 	// Build the route plugins.
-	plugins := make(plugin.Plugins, len(route.PluginConfigs))
+	plugins := make(Plugins, len(route.PluginConfigs))
 	for i, pc := range route.PluginConfigs {
 		plugin := g.Plugin(pc.PluginName)
 		if plugin == nil {

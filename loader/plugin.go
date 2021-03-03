@@ -17,27 +17,27 @@ package loader
 import (
 	"fmt"
 
-	"github.com/xgfone/apigw/plugin"
+	"github.com/xgfone/apigw"
 )
 
 // PluginLoader is used to load the plugin.
 type PluginLoader interface {
 	Name() string
-	Plugin() (plugin.Plugin, error)
+	Plugin() (apigw.Plugin, error)
 }
 
 type pluginLoader struct {
 	name   string
-	plugin func() (plugin.Plugin, error)
+	plugin func() (apigw.Plugin, error)
 }
 
 // NewPluginLoader returns a new plugin loader.
-func NewPluginLoader(name string, plugin func() (plugin.Plugin, error)) PluginLoader {
+func NewPluginLoader(name string, plugin func() (apigw.Plugin, error)) PluginLoader {
 	return pluginLoader{name: name, plugin: plugin}
 }
 
-func (l pluginLoader) Name() string                   { return l.name }
-func (l pluginLoader) Plugin() (plugin.Plugin, error) { return l.plugin() }
+func (l pluginLoader) Name() string                  { return l.name }
+func (l pluginLoader) Plugin() (apigw.Plugin, error) { return l.plugin() }
 
 var pluginLoaders = make(map[string]PluginLoader, 4)
 

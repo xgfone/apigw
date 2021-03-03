@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apigw
+package apigw_test
 
 import (
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
+	"github.com/xgfone/apigw"
 	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/go-service/loadbalancer"
 )
 
@@ -37,13 +36,13 @@ func (b fakeBackend) UserData() interface{}            { return nil }
 func (b fakeBackend) MetaData() map[string]interface{} { return nil }
 func (b fakeBackend) IsHealthy(context.Context) bool   { return true }
 func (b fakeBackend) RoundTrip(c context.Context, r loadbalancer.Request) (loadbalancer.Response, error) {
-	r.(lb.Request).Context().Text(200, b.name)
+	// r.(lb.Request).Context().Text(200, b.name)
 	return nil, nil
 }
 
-func newPanicErrorPlugin(config interface{}) (Middleware, error) {
-	return func(next Handler) Handler {
-		return func(ctx *Context) error {
+func newPanicErrorPlugin(config interface{}) (apigw.Middleware, error) {
+	return func(next apigw.Handler) apigw.Handler {
+		return func(ctx *apigw.Context) error {
 			if err := next(ctx); err != nil {
 				panic(err)
 			}
@@ -52,10 +51,10 @@ func newPanicErrorPlugin(config interface{}) (Middleware, error) {
 	}, nil
 }
 
-func newReqCountPlugin(config interface{}) (Middleware, error) {
-	return func(next Handler) Handler {
+func newReqCountPlugin(config interface{}) (apigw.Middleware, error) {
+	return func(next apigw.Handler) apigw.Handler {
 		var count int64
-		return func(ctx *Context) error {
+		return func(ctx *apigw.Context) error {
 			count++
 			defer func() { count-- }()
 			return next(ctx)
@@ -64,19 +63,19 @@ func newReqCountPlugin(config interface{}) (Middleware, error) {
 }
 
 func BenchmarkGatewayWithoutPlugins(b *testing.B) {
-	gw := NewGateway()
+	gw := apigw.NewGateway()
 
-	forwarder := lb.NewForwarder("benchmark", time.Minute)
+	forwarder := lb.NewForwarder("benchmark", 0)
 	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend1"))
 	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend2"))
-	gw.RegisterRoute(Route{
+	gw.RegisterRoute(apigw.Route{
 		Host:      "www.example.com",
 		Path:      "/v1/:path",
 		Method:    http.MethodGet,
 		Forwarder: forwarder,
 	})
 
-	req, _ := http.NewRequest(http.MethodGet, "", nil)
+	req, _ := http.NewRequest(http.MethodGet, "http://www.example.com/v1/test", nil)
 	resp := httptest.NewRecorder()
 
 	b.ResetTimer()
@@ -87,25 +86,25 @@ func BenchmarkGatewayWithoutPlugins(b *testing.B) {
 }
 
 func BenchmarkGatewayWithPlugins(b *testing.B) {
-	gw := NewGateway()
-	gw.RegisterPlugin(plugin.NewPlugin("panic", 2, newPanicErrorPlugin)).
-		RegisterPlugin(plugin.NewPlugin("count", 1, newReqCountPlugin))
+	gw := apigw.NewGateway()
+	gw.RegisterPlugin(apigw.NewPlugin("panic", 2, newPanicErrorPlugin)).
+		RegisterPlugin(apigw.NewPlugin("count", 1, newReqCountPlugin))
 
-	forwarder := lb.NewForwarder("benchmark", time.Minute)
+	forwarder := lb.NewForwarder("benchmark", 0)
 	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend1"))
 	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend2"))
-	gw.RegisterRoute(Route{
+	gw.RegisterRoute(apigw.Route{
 		Host:      "www.example.com",
 		Path:      "/v1/:path",
 		Method:    http.MethodGet,
 		Forwarder: forwarder,
-		PluginConfigs: []RoutePluginConfig{
+		PluginConfigs: []apigw.RoutePluginConfig{
 			{PluginName: "count"},
 			{PluginName: "panic"},
 		},
 	})
 
-	req, _ := http.NewRequest(http.MethodGet, "", nil)
+	req, _ := http.NewRequest(http.MethodGet, "http://www.example.com/v1/test", nil)
 	resp := httptest.NewRecorder()
 
 	b.ResetTimer()

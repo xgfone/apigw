@@ -19,9 +19,11 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
-	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/ship/v3"
+	"github.com/xgfone/ship/v3/router"
+	"github.com/xgfone/ship/v3/router/echo"
 )
 
 // Define some type aliases.
@@ -41,29 +43,90 @@ type (
 
 // Gateway is an api gateway.
 type Gateway struct {
-	mdws      []Middleware
-	router    *ship.Ship
-	routes    map[string]map[string]Route // map[Host]map[RouteKey]Route
-	plugins   map[string]plugin.Plugin    // map[PluginName]plugin.Plugin
-	notfounds map[string]Handler          // map[Host]Handler
-	notfound  Handler
+	mdws   []Middleware
+	router *ship.Ship
+
 	lock      sync.RWMutex
+	routes    map[string]map[string]Route // map[Host]map[RouteKey]Route
+	plugins   map[string]Plugin           // map[PluginName]Plugin
+	notfounds map[string]Handler          // map[Host]Handler
+	hostmdws  map[string][]Middleware     // map[Host][]Middleware
+	notfound  Handler
+	hasgmdw   uint32
+	hashmdw   uint32
 }
 
 // NewGateway returns a new Gateway.
 func NewGateway() *Gateway {
 	g := &Gateway{
 		routes:    make(map[string]map[string]Route, 128),
-		plugins:   make(map[string]plugin.Plugin, 8),
+		plugins:   make(map[string]Plugin, 8),
 		notfounds: make(map[string]Handler),
+		hostmdws:  make(map[string][]Middleware),
 		notfound:  ship.NotFoundHandler(),
 	}
 	g.router = ship.Default()
 	g.router.Lock = new(sync.RWMutex)
-	g.router.NotFound = g.NotFound
+	g.router.NotFound = g.NotFoundHandler
 	g.router.HandleError = g.handleError
-	g.router.Pre(g.handleMiddleware)
+	g.router.RouteExecutor = g.ExecuteRoute
+	g.router.SetNewRouter(func() router.Router {
+		return router.NewLockRouter(echo.NewRouter(nil, nil))
+	})
 	return g
+}
+
+// ExecuteRoute executes the route, which will execute the middlewares,
+// find the route by the method and path from the underlying router,
+// then execute the route handler.
+//
+// Notice: it is used to configure the field RouteExecutor of the underlying
+// router. In general, you don't have to reset it.
+func (g *Gateway) ExecuteRoute(ctx *Context) error {
+	hasgmdw := atomic.LoadUint32(&g.hasgmdw) == 1
+	hashmdw := atomic.LoadUint32(&g.hashmdw) == 1
+	if hasgmdw || hashmdw {
+		return g.executeRouteWithMiddleware(ctx, hasgmdw, hashmdw)
+	}
+	return g.findAndExecuteRoute(ctx)
+}
+
+func (g *Gateway) executeRouteWithMiddleware(ctx *Context, hasgmdw, hashmdw bool) error {
+	handler := g.findAndExecuteRoute
+
+	// For the host middleware
+	if hashmdw {
+		var mdws []Middleware
+		g.lock.RLock()
+		mdws = g.hostmdws[ctx.RouteInfo.Host]
+		for i := len(mdws) - 1; i >= 0; i-- {
+			handler = mdws[i](handler)
+		}
+
+		mdws = g.hostmdws[ctx.Host()]
+		for i := len(mdws) - 1; i >= 0; i-- {
+			handler = mdws[i](handler)
+		}
+		g.lock.RUnlock()
+	}
+
+	// For the global middleware
+	if hasgmdw {
+		for i := len(g.mdws) - 1; i >= 0; i-- {
+			handler = g.mdws[i](handler)
+		}
+	}
+
+	return handler(ctx)
+}
+
+func (g *Gateway) findAndExecuteRoute(ctx *Context) error {
+	return ctx.Execute()
+}
+
+func (g *Gateway) handleRequest(ctx *Context) error {
+	// Forward the request to the backend server.
+	return ctx.RouteCtxData.(Route).Forwarder.Forward(ctx)
 }
 
 func (g *Gateway) handleError(ctx *Context, err error) {
@@ -77,8 +140,11 @@ func (g *Gateway) handleError(ctx *Context, err error) {
 	}
 }
 
-// NotFound is the handler of the router to handle the NotFound.
-func (g *Gateway) NotFound(ctx *Context) error {
+// NotFoundHandler is the handler of the router to handle the NotFound.
+//
+// Notice: it is used to configure the field NotFound of the underlying router.
+// In general, you don't have to reset it.
+func (g *Gateway) NotFoundHandler(ctx *Context) error {
 	handler := g.notfound
 	g.lock.RLock()
 	if h, ok := g.notfounds[ctx.Host()]; ok {
@@ -143,42 +209,64 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.router.ServeHTTP(w, r)
 }
 
-func (g *Gateway) handleMiddleware(next Handler) Handler {
-	return func(ctx *Context) (err error) {
-		_len := len(g.mdws)
-		if _len == 0 {
-			return next(ctx)
-		}
-
-		handler := next
-		for i := _len - 1; i >= 0; i-- {
-			handler = g.mdws[i](handler)
-		}
-		return handler(ctx)
+// RegisterGlobalMiddlewares registers the global route middlewares,
+// which will act on all the hosts.
+//
+// Notice: It must be called before starting the gateway.
+func (g *Gateway) RegisterGlobalMiddlewares(mws ...Middleware) {
+	g.mdws = append(g.mdws, mws...)
+	if len(g.mdws) == 0 {
+		atomic.StoreUint32(&g.hasgmdw, 0)
+	} else {
+		atomic.StoreUint32(&g.hasgmdw, 1)
 	}
 }
 
-func (g *Gateway) handleRequest(ctx *Context) error {
-	// Forward the request to the backend server.
-	return ctx.RouteCtxData.(Route).Forwarder.Forward(ctx)
-}
-
-// RegisterMiddlewares registers some router middlewares, which are run
-// before routing, so you can modify the http request by using it
-// to make a difference when routing later.
+// ResetGlobalMiddlewares cleans the old global router middlewares
+// and resets it to mws.
 //
-// Notice: it only uses Host, Method and Path to route the request.
-func (g *Gateway) RegisterMiddlewares(mws ...Middleware) {
-	g.mdws = append(g.mdws, mws...)
+// Notice: It must be called before starting the gateway.
+func (g *Gateway) ResetGlobalMiddlewares(mws ...Middleware) {
+	g.mdws = append([]Middleware{}, mws...)
+	if len(g.mdws) == 0 {
+		atomic.StoreUint32(&g.hasgmdw, 0)
+	} else {
+		atomic.StoreUint32(&g.hasgmdw, 1)
+	}
 }
 
-// ResetMiddlewares cleans the old and resets the router middleware to mws.
-func (g *Gateway) ResetMiddlewares(mws ...Middleware) {
-	g.mdws = append([]Middleware{}, mws...)
+// RegisterHostMiddlewares registers the host route middlewares,
+// which will act on the given host.
+//
+// Notice: It can be called at any time.
+func (g *Gateway) RegisterHostMiddlewares(host string, mws ...Middleware) {
+	g.lock.Lock()
+	g.hostmdws[host] = append(g.hostmdws[host], mws...)
+	if len(g.hostmdws) == 0 {
+		atomic.StoreUint32(&g.hashmdw, 0)
+	} else {
+		atomic.StoreUint32(&g.hashmdw, 1)
+	}
+	g.lock.Unlock()
+}
+
+// ResetHostMiddlewares cleans the old host router middlewares
+// and resets it to mws.
+//
+// Notice: It can be called at any time.
+func (g *Gateway) ResetHostMiddlewares(host string, mws ...Middleware) {
+	g.lock.Lock()
+	g.hostmdws[host] = append([]Middleware{}, mws...)
+	if len(g.hostmdws) == 0 {
+		atomic.StoreUint32(&g.hashmdw, 0)
+	} else {
+		atomic.StoreUint32(&g.hashmdw, 1)
+	}
+	g.lock.Unlock()
 }
 
 // RegisterPlugin registers the plugin.
-func (g *Gateway) RegisterPlugin(p plugin.Plugin) *Gateway {
+func (g *Gateway) RegisterPlugin(p Plugin) *Gateway {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
@@ -199,7 +287,7 @@ func (g *Gateway) UnregisterPlugin(pname string) *Gateway {
 }
 
 // Plugin returns the plugin by the name. Return nil instead if not exist.
-func (g *Gateway) Plugin(pname string) plugin.Plugin {
+func (g *Gateway) Plugin(pname string) Plugin {
 	g.lock.RLock()
 	p := g.plugins[pname]
 	g.lock.RUnlock()
@@ -207,9 +295,9 @@ func (g *Gateway) Plugin(pname string) plugin.Plugin {
 }
 
 // Plugins returns all the registered plugins.
-func (g *Gateway) Plugins() plugin.Plugins {
+func (g *Gateway) Plugins() Plugins {
 	g.lock.RLock()
-	plugins := make(plugin.Plugins, 0, len(g.plugins))
+	plugins := make(Plugins, 0, len(g.plugins))
 	for _, p := range g.plugins {
 		plugins = append(plugins, p)
 	}

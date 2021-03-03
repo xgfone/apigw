@@ -23,7 +23,6 @@ import (
 	"github.com/xgfone/apigw"
 	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/apigw/forward/lb/backend"
-	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/ship/v3"
 )
@@ -85,10 +84,13 @@ func ExampleGateway() {
 	// gw.Router().SetLogger(logger)
 
 	// Register the middlewares and the plugins.
-	gw.RegisterMiddlewares(gwMiddleware("middleware1"), gwMiddleware("middleware2"))
-	gw.RegisterPlugin(plugin.NewPlugin("panic", 3, newPanicPlugin))
-	gw.RegisterPlugin(plugin.NewPlugin("token", 1, newTokenAuthPlugin))
-	gw.RegisterPlugin(plugin.NewPlugin("log", 2, newLogPlugin))
+	gw.RegisterGlobalMiddlewares(gwMiddleware("middleware1"), gwMiddleware("middleware2"))
+	gw.RegisterPlugin(apigw.NewPlugin("panic", 3, newPanicPlugin))
+	gw.RegisterPlugin(apigw.NewPlugin("token", 1, newTokenAuthPlugin))
+	gw.RegisterPlugin(apigw.NewPlugin("log", 2, newLogPlugin))
+
+	// (Optional) Set the middlewares only for the given host.
+	gw.RegisterHostMiddlewares(host, gwMiddleware(host))
 
 	// (Optional) Set the NotFound handler for a certain host domain.
 	gw.SetHostNotFound(host, func(c *apigw.Context) error {
