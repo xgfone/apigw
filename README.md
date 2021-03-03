@@ -4,21 +4,21 @@ Another simple, flexible, high performance api gateway library implemented by Go
 
 
 ### Features
-- High performance, flexible. See [Example](#example) and [apigateway](https://github.com/xgfone/apigateway).
+- Flexible, high performance and zero memory allocation for the core engine. See Benchmark, [Example](#example) and [apigateway](https://github.com/xgfone/apigateway).
 - Support the virtual host, and different hosts has their own independent routes and NotFound.
 - Support the health check for the backend, that's upstream server.
 - Support the group of the upstream servers as the backend.
 - Support to customize the backend forwarder of the route.
 - Most of the functions are implemented by the plugin mode.
-- Too few core engine codes, ~1200 lines.
+- Too few core engine codes, ~1300 lines.
     ```shell
     $ cloc --exclude-dir=plugins --not-match-f=_test.go --include-lang=Go --quiet .
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code
     -------------------------------------------------------------------------------
-    Go                              16            280            398            1198
+    Go                              16            288            422           1300
     -------------------------------------------------------------------------------
-    SUM:                            16            280            398            1198
+    SUM:                            16            288            422           1300
     -------------------------------------------------------------------------------
     ```
 
@@ -26,6 +26,8 @@ Another simple, flexible, high performance api gateway library implemented by Go
 ### Difference between Middleware and Plugin
 - Plugin is pluggable during running, and run after routing the request.
 - Middleware is unpluggable after running, and run before routing the request.
+
+Unless you want to modify the request header to affect routing, it is recommended to use the plugins instead of the middlewares. Because plugins performs better than middlewares. To log all the requests to all the host domains, you maybe use the global middleware or the plugin to finish it.
 
 **Notice:** The framework is based on [ship](https://github.com/xgfone/ship), so it's based on `Path` and `Method` of the request URL to route the request at first, then the api gateway framework takes over the handling and forwards it to one of the backends, such as routing based on the header or rewriting the request.
 
@@ -55,7 +57,6 @@ import (
 	"github.com/xgfone/apigw"
 	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/apigw/forward/lb/backend"
-	"github.com/xgfone/apigw/plugin"
 	"github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/goapp"
 	"github.com/xgfone/goapp/log"
@@ -124,10 +125,13 @@ func main() {
 	// gw.Router().SetLogger(logger)
 
 	// Register the middlewares and the plugins.
-	gw.RegisterMiddlewares(gwMiddleware("middleware1"), gwMiddleware("middleware2"))
-	gw.RegisterPlugin(plugin.NewPlugin("panic", 3, newPanicPlugin))
-	gw.RegisterPlugin(plugin.NewPlugin("token", 1, newTokenAuthPlugin))
-	gw.RegisterPlugin(plugin.NewPlugin("log", 2, newLogPlugin))
+	gw.RegisterGlobalMiddlewares(gwMiddleware("middleware1"), gwMiddleware("middleware2"))
+	gw.RegisterPlugin(apigw.NewPlugin("panic", 3, newPanicPlugin))
+	gw.RegisterPlugin(apigw.NewPlugin("token", 1, newTokenAuthPlugin))
+	gw.RegisterPlugin(apigw.NewPlugin("log", 2, newLogPlugin))
+
+	// (Optional) Set the middlewares only for the given host.
+	gw.RegisterHostMiddlewares(host, gwMiddleware(host))
 
 	// (Optional) Set the NotFound handler for a certain host domain.
 	gw.SetHostNotFound(host, func(c *apigw.Context) error {
