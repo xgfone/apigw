@@ -27,7 +27,7 @@ Another simple, flexible, high performance api gateway library implemented by Go
 - Plugin is pluggable during running, and run after routing the request.
 - Middleware is unpluggable after running, and run before routing the request.
 
-Unless you want to modify the request header to affect routing, it is recommended to use the plugins instead of the middlewares. Because plugins performs better than middlewares. To log all the requests to all the host domains, you maybe use the global middleware or the plugin to finish it.
+Unless you want to modify the request to affect routing, it is recommended to use the plugins instead of the middlewares. Because plugins performs better than middlewares. To log all the requests to all the host domains, you maybe use the global middleware (or the plugin) to finish it.
 
 **Notice:** The framework is based on [ship](https://github.com/xgfone/ship), so it's based on `Path` and `Method` of the request URL to route the request at first, then the api gateway framework takes over the handling and forwards it to one of the backends, such as routing based on the header or rewriting the request.
 
