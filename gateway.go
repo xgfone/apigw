@@ -145,8 +145,8 @@ func (g *Gateway) handleError(ctx *Context, err error) {
 // Notice: it is used to configure the field NotFound of the underlying router.
 // In general, you don't have to reset it.
 func (g *Gateway) NotFoundHandler(ctx *Context) error {
-	handler := g.notfound
 	g.lock.RLock()
+	handler := g.notfound
 	if h, ok := g.notfounds[ctx.Host()]; ok {
 		handler = h
 	} else if h, ok = g.notfounds[ctx.RouteInfo.Host]; ok {
