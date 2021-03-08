@@ -34,9 +34,9 @@ func NewBackendGroupManager(name string) *BackendGroupManager {
 // Name returns the name of the backend group manager.
 func (m *BackendGroupManager) Name() string { return m.name }
 
-// Add adds the backend group. If the backend group has been added,
+// AddBackendGroup adds the backend group. If the backend group has been added,
 // do nothing and return the added backend group.
-func (m *BackendGroupManager) Add(bg *BackendGroup) *BackendGroup {
+func (m *BackendGroupManager) AddBackendGroup(bg *BackendGroup) *BackendGroup {
 	m.lock.Lock()
 	if g, ok := m.groups[bg.name]; ok {
 		bg = g
@@ -47,9 +47,11 @@ func (m *BackendGroupManager) Add(bg *BackendGroup) *BackendGroup {
 	return bg
 }
 
-// Delete deletes the backend group by the name, and returns the added
-// backend group. If the backend group does not exist, return nil.
-func (m *BackendGroupManager) Delete(backendGroupName string) *BackendGroup {
+// DeleteBackendGroup deletes the backend group by the name,
+// and returns the added backend group.
+//
+// If the backend group does not exist, return nil.
+func (m *BackendGroupManager) DeleteBackendGroup(backendGroupName string) *BackendGroup {
 	m.lock.Lock()
 	g, ok := m.groups[backendGroupName]
 	if ok {
