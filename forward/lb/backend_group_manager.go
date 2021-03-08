@@ -16,61 +16,6 @@ package lb
 
 import "sync"
 
-var (
-	bgms     = make(map[string]*BackendGroupManager)
-	bgmslock sync.RWMutex
-)
-
-// RegisterBackendGroupManager registers and returns the backend group manager.
-//
-// If the backend group manager has been registered, do nothing
-// and return the registered backend group manager.
-func RegisterBackendGroupManager(m *BackendGroupManager) *BackendGroupManager {
-	bgmslock.Lock()
-	if bgm, ok := bgms[m.name]; ok {
-		m = bgm
-	} else {
-		bgms[m.name] = m
-	}
-	bgmslock.Unlock()
-	return m
-}
-
-// UnregisterBackendGroupManager unregisters the backend group by the name,
-// and returns the registered backend group.
-//
-// If the backend group does not exist, return nil.
-func UnregisterBackendGroupManager(name string) *BackendGroupManager {
-	bgmslock.Lock()
-	m, ok := bgms[name]
-	if ok {
-		delete(bgms, name)
-	}
-	bgmslock.Unlock()
-	return m
-}
-
-// GetBackendGroupManager returns the backend group manager by the name.
-//
-// If the backend group manager does not exist, return nil.
-func GetBackendGroupManager(name string) (m *BackendGroupManager) {
-	bgmslock.RLock()
-	m = bgms[name]
-	bgmslock.RUnlock()
-	return
-}
-
-// GetBackendGroupManagers returns all the backend group manager.
-func GetBackendGroupManagers() (ms []*BackendGroupManager) {
-	bgmslock.RLock()
-	ms = make([]*BackendGroupManager, 0, len(bgms))
-	for _, m := range bgms {
-		ms = append(ms, m)
-	}
-	bgmslock.RUnlock()
-	return
-}
-
 // BackendGroupManager is used to manage the backend group.
 type BackendGroupManager struct {
 	name   string
