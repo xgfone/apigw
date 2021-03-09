@@ -98,9 +98,9 @@ func BenchmarkGatewayWithPlugins(b *testing.B) {
 		Path:      "/v1/:path",
 		Method:    http.MethodGet,
 		Forwarder: forwarder,
-		PluginConfigs: []apigw.RoutePluginConfig{
-			{PluginName: "count"},
-			{PluginName: "panic"},
+		Plugins: []apigw.RoutePlugin{
+			{Name: "count"},
+			{Name: "panic"},
 		},
 	})
 

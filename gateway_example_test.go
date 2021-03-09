@@ -113,13 +113,13 @@ func ExampleGateway() {
 	forwarder.HealthCheck = healthChecker                      // For the health check of backends, or not use it
 	forwarder.AddBackends([]lb.Backend{backend1, backend2})    // Add the backends specific to the route
 	route.Forwarder = forwarder                                // Set the backend forwarder for the route
-	route.PluginConfigs = []apigw.RoutePluginConfig{           // Set the plugins which the route will use
-		{PluginName: "token", PluginConfig: "authentication_token"},
-		{PluginName: "log"},
+	route.Plugins = []apigw.RoutePlugin{                       // Set the plugins which the route will use
+		{Name: "token", Config: "authentication_token"},
+		{Name: "log"},
 
 		/// We don't configure the panic plugin for the current route,
 		/// so it won't be used when triggering the route.
-		// {PluginName: "panic"},
+		// {Name: "panic"},
 	}
 
 	// Register the route into the gateway.

@@ -32,15 +32,14 @@ var (
 	ErrEmptyPath = errors.New("the empty route path")
 )
 
-// RoutePluginConfig is used to configure the route plugin.
-type RoutePluginConfig struct {
-	PluginName   string      `json:"plugin_name"`
-	PluginConfig interface{} `json:"plugin_config,omitempty"`
+// RoutePlugin is used to configure the route plugin.
+type RoutePlugin struct {
+	Name   string      `json:"name" validate:"required"`
+	Config interface{} `json:"config,omitempty"`
 }
 
-func (rpc1 RoutePluginConfig) equal(rpc2 RoutePluginConfig) bool {
-	return rpc1.PluginName == rpc2.PluginName &&
-		reflect.DeepEqual(rpc1.PluginConfig, rpc2.PluginConfig)
+func (rpc1 RoutePlugin) equal(rpc2 RoutePlugin) bool {
+	return rpc1.Name == rpc2.Name && reflect.DeepEqual(rpc1.Config, rpc2.Config)
 }
 
 // Forwarder is used to forward the http request to the backend server.
@@ -58,8 +57,8 @@ type Route struct {
 	Method string `json:"method" validate:"required"`
 
 	// Optional
-	Forwarder     Forwarder           `json:"-"`
-	PluginConfigs []RoutePluginConfig `json:"plugin_configs,omitempty"`
+	Forwarder Forwarder     `json:"-"`
+	Plugins   []RoutePlugin `json:"plugins,omitempty"`
 
 	handler Handler
 }
@@ -83,14 +82,14 @@ func (r Route) equal(r2 Route) bool {
 		return false
 	}
 
-	pc1len := len(r.PluginConfigs)
-	pc2len := len(r2.PluginConfigs)
+	pc1len := len(r.Plugins)
+	pc2len := len(r2.Plugins)
 	if pc1len != pc2len {
 		return false
 	}
 
 	for i := 0; i < pc1len; i++ {
-		if !r.PluginConfigs[i].equal(r2.PluginConfigs[i]) {
+		if !r.Plugins[i].equal(r2.Plugins[i]) {
 			return false
 		}
 	}
@@ -197,11 +196,11 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 	}
 
 	// Build the route plugins.
-	plugins := make(Plugins, len(route.PluginConfigs))
-	for i, pc := range route.PluginConfigs {
-		plugin := g.Plugin(pc.PluginName)
+	plugins := make(Plugins, len(route.Plugins))
+	for i, pc := range route.Plugins {
+		plugin := g.Plugin(pc.Name)
 		if plugin == nil {
-			err = fmt.Errorf("no the pre-route plugin named '%s'", pc.PluginName)
+			err = fmt.Errorf("no the pre-route plugin named '%s'", pc.Name)
 			return
 		}
 		plugins[i] = plugin
@@ -211,7 +210,7 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 	// Build the route handler from plugins.
 	route.handler = g.handleRequest
 	for i, plugin := range plugins {
-		mw, err := plugin.Plugin(route.PluginConfigs[i].PluginConfig)
+		mw, err := plugin.Plugin(route.Plugins[i].Config)
 		if err != nil {
 			return Route{}, err
 		}
