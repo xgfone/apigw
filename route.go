@@ -123,8 +123,10 @@ func (g *Gateway) AddHost(host string) (err error) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	if _, ok := g.routes[host]; ok || host == "" {
+	if _, ok := g.routes[host]; ok {
 		return
+	} else if host == "" {
+		g.routes[host] = make(map[string]Route)
 	} else if _, err = g.router.AddHost(host, nil); err == nil {
 		g.routes[host] = make(map[string]Route)
 	}
@@ -140,6 +142,9 @@ func (g *Gateway) DelHost(host string) (err error) {
 	defer g.lock.Unlock()
 
 	if routes, ok := g.routes[host]; ok {
+		delete(g.routes, host)
+		delete(g.hostmdws, host)
+		delete(g.notfounds, host)
 		g.router.DelHost(host)
 		for _, r := range routes {
 			if err := r.Forwarder.Close(); err != nil {
