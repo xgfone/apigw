@@ -17,6 +17,7 @@ package lb
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/xgfone/go-service/loadbalancer"
@@ -53,57 +54,51 @@ func (b hcBackend) HealthCheck() HealthCheck      { return b.hc }
 //////////////////////////////////////////////////////////////////////////////
 
 type endpointBackend struct {
-	loadbalancer.Provider
-	loadbalancer.Endpoint
+	Backend
 	online bool
 }
 
-func newEndpointBackend(p loadbalancer.Provider, ep loadbalancer.Endpoint,
-	online bool) endpointBackend {
-	return endpointBackend{Provider: p, Endpoint: ep, online: online}
+func newEndpointBackend(b Backend, online bool) endpointBackend {
+	return endpointBackend{Backend: b, online: online}
 }
 
-func (eb endpointBackend) Unwrap() loadbalancer.Endpoint {
-	return eb.Endpoint
-}
-
-func (eb endpointBackend) HealthCheck() HealthCheck {
-	ep := eb.Endpoint
-	if eu, ok := eb.Endpoint.(loadbalancer.EndpointUnwrap); ok {
-		ep = eu.Unwrap()
-	}
-	return ep.(Backend).HealthCheck()
-}
-
-func (eb endpointBackend) IsHealthy(context.Context) bool {
-	return eb.online
-}
-
+func (eb endpointBackend) Unwrap() loadbalancer.Endpoint  { return eb.Backend }
+func (eb endpointBackend) IsHealthy(context.Context) bool { return eb.online }
 func (eb endpointBackend) MetaData() map[string]interface{} {
-	md := eb.Endpoint.MetaData()
+	md := eb.Backend.MetaData()
 	md["online"] = eb.online
 	return md
 }
 
 /////////////////////////////////////////////////////////////////////////////
 
-// GroupBackend is the group backend.
-type GroupBackend interface {
-	BackendGroup() *BackendGroup
-	Backend
-}
-
 // GroupBackendConfig is used to configure the group backend.
 type GroupBackendConfig struct {
-	UserData     interface{}
-	HealthCheck  HealthCheck
-	BackendGroup *BackendGroup
+	UserData    interface{}
+	HealthCheck HealthCheck
+	IsHealthy   func(Backend) bool
 }
 
+// GroupBackend is the group backend, which implements the interface Backend
+// and BackendGroup.
+type GroupBackend struct {
+	name string
+	conf GroupBackendConfig
+
+	lock     sync.RWMutex
+	backends map[string]Backend
+	updaters map[string]BackendGroupUpdater
+}
+
+var _ Backend = &GroupBackend{}
+var _ BackendGroup = &GroupBackend{}
+
 // NewGroupBackend returns a new group backend.
-func NewGroupBackend(name string, config *GroupBackendConfig) (GroupBackend, error) {
+//
+// If name is empty, it will panic.
+func NewGroupBackend(name string, config *GroupBackendConfig) *GroupBackend {
 	if name == "" {
-		return nil, errors.New("the group name must not be empty")
+		panic(errors.New("the group name must not be empty"))
 	}
 
 	var conf GroupBackendConfig
@@ -111,18 +106,151 @@ func NewGroupBackend(name string, config *GroupBackendConfig) (GroupBackend, err
 		conf = *config
 	}
 
-	return groupBackend{Endpoint: loadbalancer.NewNoopEndpoint(name), conf: conf}, nil
+	return &GroupBackend{
+		name:     name,
+		conf:     conf,
+		backends: make(map[string]Backend),
+		updaters: make(map[string]BackendGroupUpdater),
+	}
 }
 
-type groupBackend struct {
-	conf GroupBackendConfig
-	loadbalancer.Endpoint
+// Type implements the interface Backend.
+func (b *GroupBackend) Type() string { return "group" }
+
+// String implements the interface fmt.Stringer.
+func (b *GroupBackend) String() string { return b.name }
+
+// IsHealthy implements the interface Backend.
+func (b *GroupBackend) IsHealthy(c context.Context) bool { return true }
+
+// HealthCheck implements the interface Backend.
+func (b *GroupBackend) HealthCheck() HealthCheck { return b.conf.HealthCheck }
+
+// UserData implements the interface Backend.
+func (b *GroupBackend) UserData() interface{} { return b.conf.UserData }
+
+// MetaData implements the interface Backend.
+func (b *GroupBackend) MetaData() map[string]interface{} {
+	return map[string]interface{}{"name": b.name}
 }
 
-func (b groupBackend) Type() string                { return "group" }
-func (b groupBackend) BackendGroup() *BackendGroup { return b.conf.BackendGroup }
-func (b groupBackend) HealthCheck() HealthCheck    { return b.conf.HealthCheck }
-func (b groupBackend) UserData() interface{}       { return b.conf.UserData }
-func (b groupBackend) MetaData() map[string]interface{} {
-	return map[string]interface{}{"name": b.String()}
+// RoundTrip implements the interface Backend.
+func (b *GroupBackend) RoundTrip(c context.Context, r loadbalancer.Request) (
+	loadbalancer.Response, error) {
+	panic("GroupBackend.RoundTrip: not implemented")
+}
+
+// Close implements the interface io.Closer.
+func (b *GroupBackend) Close() error {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	for _, updater := range b.updaters {
+		for _, backend := range b.backends {
+			updater.DelBackendFromGroup(backend)
+		}
+		updater.DelBackendFromGroup(b)
+	}
+
+	b.backends = nil
+	b.updaters = nil
+	return nil
+}
+
+// Name implements the interface BackendGroup.
+func (b *GroupBackend) Name() string { return b.name }
+
+// AddBackend implements the interface BackendGroup.
+func (b *GroupBackend) AddBackend(backend Backend) {
+	addr := backend.String()
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if _, ok := b.backends[addr]; !ok {
+		b.backends[addr] = backend
+		for _, u := range b.updaters {
+			u.AddBackendFromGroup(backend)
+		}
+	}
+}
+
+// DelBackend implements the interface BackendGroup.
+func (b *GroupBackend) DelBackend(backend Backend) {
+	addr := backend.String()
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if _, ok := b.backends[addr]; ok {
+		delete(b.backends, addr)
+		for _, u := range b.updaters {
+			u.DelBackendFromGroup(backend)
+		}
+	}
+}
+
+// GetBackends implements the interface BackendGroup.
+//
+// If the group is not used by any forwarders, the online status of the backend
+// is always true.
+func (b *GroupBackend) GetBackends() []Backend {
+	online := func(b Backend) bool { return true }
+
+	b.lock.RLock()
+	if b.conf.IsHealthy != nil && len(b.updaters) != 0 {
+		online = func(backend Backend) bool { return b.conf.IsHealthy(backend) }
+	}
+
+	bs := make([]Backend, 0, len(b.backends))
+	for _, backend := range b.backends {
+		bs = append(bs, newEndpointBackend(backend, online(backend)))
+	}
+	b.lock.RUnlock()
+	return bs
+}
+
+// GetUpdater implements the interface BackendGroup.
+func (b *GroupBackend) GetUpdater(name string) BackendGroupUpdater {
+	b.lock.RLock()
+	u := b.updaters[name]
+	b.lock.RUnlock()
+	return u
+}
+
+// GetUpdaters implements the interface BackendGroup.
+func (b *GroupBackend) GetUpdaters() []BackendGroupUpdater {
+	b.lock.RLock()
+	us := make([]BackendGroupUpdater, 0, len(b.updaters))
+	for _, u := range b.updaters {
+		us = append(us, u)
+	}
+	b.lock.RUnlock()
+	return us
+}
+
+// AddUpdater implements the interface BackendGroup.
+func (b *GroupBackend) AddUpdater(u BackendGroupUpdater) {
+	name := u.Name()
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if _, ok := b.updaters[name]; !ok {
+		b.updaters[name] = u
+		for _, backend := range b.backends {
+			u.AddBackendFromGroup(backend)
+		}
+	}
+}
+
+// DelUpdater implements the interface BackendGroup.
+func (b *GroupBackend) DelUpdater(u BackendGroupUpdater) {
+	name := u.Name()
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if u, ok := b.updaters[name]; ok {
+		delete(b.updaters, name)
+		for _, backend := range b.backends {
+			u.DelBackendFromGroup(backend)
+		}
+	}
 }

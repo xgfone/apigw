@@ -20,61 +20,75 @@ import "sync"
 type BackendGroupManager struct {
 	name   string
 	lock   sync.RWMutex
-	groups map[string]*BackendGroup
+	groups map[string]BackendGroup
 }
 
 // NewBackendGroupManager returns a new backend group manager.
 func NewBackendGroupManager(name string) *BackendGroupManager {
 	return &BackendGroupManager{
 		name:   name,
-		groups: make(map[string]*BackendGroup, 4),
+		groups: make(map[string]BackendGroup, 4),
 	}
 }
 
 // Name returns the name of the backend group manager.
 func (m *BackendGroupManager) Name() string { return m.name }
 
-// AddBackendGroup adds the backend group. If the backend group has been added,
-// do nothing and return the added backend group.
-func (m *BackendGroupManager) AddBackendGroup(bg *BackendGroup) *BackendGroup {
+// AddOrNewBackendGroup is equal to m.AddBackendGroup(NewGroupBackend(name, config)).
+func (m *BackendGroupManager) AddOrNewBackendGroup(name string, config *GroupBackendConfig) (bg BackendGroup) {
 	m.lock.Lock()
-	if g, ok := m.groups[bg.name]; ok {
+	if g, ok := m.groups[name]; ok {
 		bg = g
 	} else {
-		m.groups[bg.name] = bg
+		bg = NewGroupBackend(name, config)
+		m.groups[name] = bg
 	}
 	m.lock.Unlock()
 	return bg
 }
 
-// DeleteBackendGroup deletes the backend group by the name,
-// and returns the added backend group.
-//
-// If the backend group does not exist, return nil.
-func (m *BackendGroupManager) DeleteBackendGroup(backendGroupName string) *BackendGroup {
+// AddBackendGroup adds the backend group. If the backend group has been added,
+// do nothing and return the added backend group.
+func (m *BackendGroupManager) AddBackendGroup(bg BackendGroup) BackendGroup {
 	m.lock.Lock()
-	g, ok := m.groups[backendGroupName]
-	if ok {
-		delete(m.groups, backendGroupName)
+	if g, ok := m.groups[bg.Name()]; ok {
+		bg = g
+	} else {
+		m.groups[bg.Name()] = bg
 	}
 	m.lock.Unlock()
+	return bg
+}
+
+// DelBackendGroupByName deletes the backend group by the name,
+// and returns the deleted backend group.
+//
+// If the backend group does not exist, return nil.
+func (m *BackendGroupManager) DelBackendGroupByName(name string) BackendGroup {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	g, ok := m.groups[name]
+	if ok {
+		delete(m.groups, name)
+		g.Close()
+	}
 	return g
 }
 
-// BackendGroup returns the backend group by the name.
+// GetBackendGroup returns the backend group by the name.
 //
 // If the backend group does not exist, return nil.
-func (m *BackendGroupManager) BackendGroup(name string) *BackendGroup {
+func (m *BackendGroupManager) GetBackendGroup(name string) BackendGroup {
 	m.lock.RLock()
 	g := m.groups[name]
 	m.lock.RUnlock()
 	return g
 }
 
-// BackendGroups returns all the backend groups.
-func (m *BackendGroupManager) BackendGroups() (bgs []*BackendGroup) {
+// GetBackendGroups returns all the backend groups.
+func (m *BackendGroupManager) GetBackendGroups() (bgs []BackendGroup) {
 	m.lock.RLock()
-	bgs = make([]*BackendGroup, 0, len(m.groups))
+	bgs = make([]BackendGroup, 0, len(m.groups))
 	for _, g := range m.groups {
 		bgs = append(bgs, g)
 	}
@@ -82,9 +96,9 @@ func (m *BackendGroupManager) BackendGroups() (bgs []*BackendGroup) {
 	return
 }
 
-// BackendGroupsByUpdaterName returns the list of the backend groups
+// GetBackendGroupsByUpdaterName returns the list of the backend groups
 // which add the updater.
-func (m *BackendGroupManager) BackendGroupsByUpdaterName(name string) (bgs []*BackendGroup) {
+func (m *BackendGroupManager) GetBackendGroupsByUpdaterName(name string) (bgs []BackendGroup) {
 	m.lock.RLock()
 	for _, g := range m.groups {
 		if g.GetUpdater(name) != nil {
@@ -96,7 +110,7 @@ func (m *BackendGroupManager) BackendGroupsByUpdaterName(name string) (bgs []*Ba
 }
 
 // DelUpdater deletes the backend updater from all the backend group.
-func (m *BackendGroupManager) DelUpdater(u BackendUpdater) {
+func (m *BackendGroupManager) DelUpdater(u BackendGroupUpdater) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	for _, g := range m.groups {
@@ -104,12 +118,13 @@ func (m *BackendGroupManager) DelUpdater(u BackendUpdater) {
 	}
 }
 
-// Close releases all the resources.
-func (m *BackendGroupManager) Close() {
+// Close implements the interface io.Closer and releases all the resources.
+func (m *BackendGroupManager) Close() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	for _, g := range m.groups {
 		g.Close()
 	}
 	m.groups = nil
+	return nil
 }

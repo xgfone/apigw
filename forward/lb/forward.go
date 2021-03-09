@@ -16,6 +16,7 @@ package lb
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/xgfone/apigw"
@@ -29,6 +30,9 @@ type Forwarder struct {
 	*loadbalancer.LoadBalancer
 	NewRequest func(*apigw.Context) Request
 	Timeout    time.Duration
+
+	lock     sync.RWMutex
+	backends map[string]Backend
 }
 
 // NewForwarder returns a new Forwarder.
@@ -39,7 +43,11 @@ type Forwarder struct {
 func NewForwarder(name string, maxTimeout time.Duration) *Forwarder {
 	lb := loadbalancer.NewLoadBalancer(nil)
 	lb.Name = name
-	return &Forwarder{LoadBalancer: lb, Timeout: maxTimeout}
+	return &Forwarder{
+		LoadBalancer: lb,
+		Timeout:      maxTimeout,
+		backends:     make(map[string]Backend),
+	}
 }
 
 // Name returns the name of the forwarder and implements the interface
@@ -63,11 +71,13 @@ func (f *Forwarder) DelEndpoint(ep loadbalancer.Endpoint) {
 
 // Close cleans and releases the underlying resource.
 func (f *Forwarder) Close() error {
-	for _, ep := range f.Endpoints() {
-		if gb, ok := loadbalancer.UnwrapEndpoint(ep).(GroupBackend); ok {
-			gb.BackendGroup().DelUpdater(f)
-		}
+	f.lock.RLock()
+	backends := make([]Backend, 0, len(f.backends))
+	for _, backend := range f.backends {
+		backends = append(backends, backend)
 	}
+	f.lock.RUnlock()
+	f.DelBackends(backends)
 
 	if f.HealthCheck != nil {
 		f.HealthCheck.DelEndpointsByUpdater(f)
@@ -75,6 +85,24 @@ func (f *Forwarder) Close() error {
 	}
 
 	return f.LoadBalancer.Close()
+}
+
+// AddBackendFromGroup implements the interface BackendGroupUpdater.
+func (f *Forwarder) AddBackendFromGroup(b Backend) {
+	f.addBackend(b)
+}
+
+// DelBackendFromGroup implements the interface BackendGroupUpdater.
+func (f *Forwarder) DelBackendFromGroup(b Backend) {
+	if _, ok := b.(BackendGroup); ok {
+		addr := b.String()
+		f.lock.Lock()
+		delete(f.backends, addr)
+		f.lock.Unlock()
+		return
+	}
+
+	f.delBackend(b)
 }
 
 // AddBackends adds a set of Backends.
@@ -92,12 +120,45 @@ func (f *Forwarder) DelBackends(backends []Backend) {
 }
 
 // AddBackend adds the backend.
+//
+// If the backend implements the interface BackendGroup, it will not add
+// the backend but add it as the updater into the backend group.
 func (f *Forwarder) AddBackend(b Backend) {
-	if gb, ok := loadbalancer.UnwrapEndpoint(b).(GroupBackend); ok {
-		gb.BackendGroup().AddUpdater(f)
+	addr := b.String()
+	f.lock.Lock()
+	if _, ok := f.backends[addr]; ok {
+		f.lock.Unlock()
 		return
 	}
+	f.backends[addr] = b
+	f.lock.Unlock()
 
+	if gb, ok := loadbalancer.UnwrapEndpoint(b).(BackendGroup); ok {
+		gb.AddUpdater(f)
+	} else {
+		f.addBackend(b)
+	}
+}
+
+// DelBackend deletes the backend.
+func (f *Forwarder) DelBackend(b Backend) {
+	addr := b.String()
+	f.lock.Lock()
+	if _, ok := f.backends[addr]; !ok {
+		f.lock.Unlock()
+		return
+	}
+	delete(f.backends, addr)
+	f.lock.Unlock()
+
+	if gb, ok := loadbalancer.UnwrapEndpoint(b).(BackendGroup); ok {
+		gb.DelUpdater(f)
+	} else {
+		f.delBackend(b)
+	}
+}
+
+func (f *Forwarder) addBackend(b Backend) {
 	if f.HealthCheck == nil {
 		f.AddEndpoint(b)
 		return
@@ -118,13 +179,7 @@ func (f *Forwarder) AddBackend(b Backend) {
 	f.HealthCheck.AddEndpointWithDuration(b, hc.Interval, hc.Timeout, hc.RetryNum)
 }
 
-// DelBackend deletes the backend.
-func (f *Forwarder) DelBackend(b Backend) {
-	if gb, ok := loadbalancer.UnwrapEndpoint(b).(GroupBackend); ok {
-		gb.BackendGroup().DelUpdater(f)
-		return
-	}
-
+func (f *Forwarder) delBackend(b Backend) {
 	if f.HealthCheck != nil {
 		f.HealthCheck.Unsubscribe(b.String())
 		f.HealthCheck.DelEndpoint(b)
@@ -134,21 +189,27 @@ func (f *Forwarder) DelBackend(b Backend) {
 
 // Backends returns all the backends.
 func (f *Forwarder) Backends() []Backend {
-	var eps loadbalancer.Endpoints
-	online := func(ep loadbalancer.Endpoint) bool { return true }
-	if f.HealthCheck == nil {
-		eps = f.EndpointManager().Endpoints()
-	} else {
-		eps = f.HealthCheck.Endpoints()
-		online = func(ep loadbalancer.Endpoint) bool {
-			return ep.IsHealthy(context.Background())
+	online := func(b Backend) bool { return true }
+	if f.HealthCheck != nil {
+		online = func(b Backend) bool {
+			if f.HealthCheck.IsHealthy(b.String()) {
+				return true
+			}
+
+			if _, ok := loadbalancer.UnwrapEndpoint(b).(BackendGroup); ok {
+				return b.IsHealthy(context.Background())
+			}
+
+			return false
 		}
 	}
 
-	bs := make([]Backend, len(eps))
-	for i, _len := 0, len(eps); i < _len; i++ {
-		bs[i] = newEndpointBackend(f.Provider, eps[i], online(eps[i]))
+	f.lock.RLock()
+	bs := make([]Backend, 0, len(f.backends))
+	for _, b := range f.backends {
+		bs = append(bs, newEndpointBackend(b, online(b)))
 	}
+	f.lock.RUnlock()
 	return bs
 }
 
