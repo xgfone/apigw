@@ -109,7 +109,7 @@ func (m *BackendGroupManager) GetBackendGroupsByUpdaterName(name string) (bgs []
 	return
 }
 
-// DelUpdater deletes the backend updater from all the backend group.
+// DelUpdater deletes the backend group updater from all the backend group.
 func (m *BackendGroupManager) DelUpdater(u BackendGroupUpdater) {
 	m.lock.Lock()
 	defer m.lock.Unlock()

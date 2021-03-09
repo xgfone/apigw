@@ -26,6 +26,9 @@ import (
 	"github.com/xgfone/ship/v3/router/echo"
 )
 
+// DefaultGateway is the default global Gateway.
+var DefaultGateway = NewGateway()
+
 // Define some type aliases.
 type (
 	// Context is the context of Handler.

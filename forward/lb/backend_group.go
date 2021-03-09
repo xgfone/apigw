@@ -45,21 +45,21 @@ type BackendGroup interface {
 	// GetBackends returns all the backends in the group.
 	GetBackends() []Backend
 
-	// GetUpdater returns the backend updater by the name.
+	// GetUpdater returns the backend group updater by the name.
 	//
-	// If the backend updater does not exist, return nil.
+	// If the backend group updater does not exist, return nil.
 	GetUpdater(name string) BackendGroupUpdater
 
-	// GetUpdaters returns all the backend updaters.
+	// GetUpdaters returns all the backend group updaters.
 	GetUpdaters() []BackendGroupUpdater
 
-	// AddUpdater adds the backend updater, which should add all the backends
-	// into the updater.
+	// AddUpdater adds the backend group updater, which should add
+	// all the backends into the updater.
 	//
 	// If the updater has been added, do nothing.
 	AddUpdater(BackendGroupUpdater)
 
-	// DelUpdater deletes the backend updater, which should deletes
+	// DelUpdater deletes the backend group updater, which should delete
 	// all the backends from the updater.
 	//
 	// If the updater does not exist, do nothing.
