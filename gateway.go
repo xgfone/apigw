@@ -269,24 +269,23 @@ func (g *Gateway) ResetHostMiddlewares(host string, mws ...Middleware) {
 }
 
 // RegisterPlugin registers the plugin.
-func (g *Gateway) RegisterPlugin(p Plugin) *Gateway {
-	g.lock.Lock()
-	defer g.lock.Unlock()
-
+func (g *Gateway) RegisterPlugin(p Plugin) (err error) {
 	name := p.Name()
+	g.lock.Lock()
 	if _, ok := g.plugins[name]; ok {
-		panic(fmt.Errorf("the plugin named '%s' has been registered", name))
+		err = fmt.Errorf("the plugin named '%s' has been registered", name)
+	} else {
+		g.plugins[name] = p
 	}
-	g.plugins[name] = p
-	return g
+	g.lock.Unlock()
+	return
 }
 
 // UnregisterPlugin unregisters the plugin named pname.
-func (g *Gateway) UnregisterPlugin(pname string) *Gateway {
+func (g *Gateway) UnregisterPlugin(pname string) {
 	g.lock.Lock()
 	delete(g.plugins, pname)
 	g.lock.Unlock()
-	return g
 }
 
 // Plugin returns the plugin by the name. Return nil instead if not exist.

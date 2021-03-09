@@ -87,8 +87,8 @@ func BenchmarkGatewayWithoutPlugins(b *testing.B) {
 
 func BenchmarkGatewayWithPlugins(b *testing.B) {
 	gw := apigw.NewGateway()
-	gw.RegisterPlugin(apigw.NewPlugin("panic", 2, newPanicErrorPlugin)).
-		RegisterPlugin(apigw.NewPlugin("count", 1, newReqCountPlugin))
+	gw.RegisterPlugin(apigw.NewPlugin("panic", 2, newPanicErrorPlugin))
+	gw.RegisterPlugin(apigw.NewPlugin("count", 1, newReqCountPlugin))
 
 	forwarder := lb.NewForwarder("benchmark", 0)
 	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend1"))
