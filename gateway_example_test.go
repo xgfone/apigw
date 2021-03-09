@@ -78,7 +78,7 @@ func ExampleGateway() {
 	host := "www.example.com"
 
 	// Initialize the gateway.
-	gw := apigw.NewGateway()
+	gw := lb.NewGateway() // We use lb.Gateway instead of apigw.Gateway.
 
 	// You can set the customized logger.
 	// gw.Router().SetLogger(logger)
@@ -130,16 +130,17 @@ func ExampleGateway() {
 
 	// Backends can be added after the route is registered.
 	// And the backend supports the group, which is also separated by the host.
-	bgm := lb.NewBackendGroupManager(host)
-	bg := bgm.Add(lb.NewBackendGroup(route.Name()))
-	// Support to add the backend into the group before adding the group backend into the route forwarder.
+	group := lb.NewGroupBackend("group_name", nil)
+	bgm := gw.GetBackendGroupManager(host)
+	bgm.AddBackendGroup(group)
+	// 1. Support to add the backend into the group before adding the group backend into the route forwarder.
 	backend3, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8003/:path", nil)
-	bg.AddBackend(backend3)
-	gbackend, _ := lb.NewGroupBackend("group_name", &lb.GroupBackendConfig{BackendGroup: bg})
-	forwarder.AddBackend(gbackend)
-	// Support to add the backend into the group after adding the group backend into the route forwarder.
+	group.AddBackend(backend3)
+	// 2. Add the backend group into the route forwarder.
+	forwarder.AddBackend(group)
+	// 3. Support to add the backend into the group after adding the group backend into the route forwarder.
 	backend4, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8004/:path", nil)
-	bg.AddBackend(backend4)
+	group.AddBackend(backend4)
 
 	// Start HTTP server.
 	gw.Router().Start("127.0.0.1:80").Wait()
