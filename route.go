@@ -192,7 +192,7 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 	if route.Forwarder == nil {
 		return Route{}, fmt.Errorf("forward handler must not be nil")
 	} else if route.Path == "" {
-		return Route{}, fmt.Errorf("the path must not be empty")
+		return Route{}, ErrEmptyPath
 	}
 
 	// Build the route plugins.
@@ -222,21 +222,14 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	routes, ok := g.routes[route.Host]
-	if ok {
-		if r, ok := routes[key]; ok {
-			return r, nil
-		}
-	}
-
-	if err = g.addRoute(route); err != nil {
+	if routes, ok := g.routes[route.Host]; !ok {
+		return Route{}, ErrNoHost
+	} else if r, ok = routes[key]; ok {
 		return
-	}
-
-	if ok {
-		routes[key] = route
+	} else if err = g.addRoute(route); err != nil {
+		return
 	} else {
-		g.routes[route.Host] = map[string]Route{key: route}
+		routes[key] = route
 	}
 
 	return route, nil
@@ -248,22 +241,27 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 // and the others are ignored.
 func (g *Gateway) UnregisterRoute(route Route) (r Route, err error) {
 	if route.Path == "" {
-		return Route{}, fmt.Errorf("the path must not be empty")
+		return Route{}, ErrEmptyPath
 	}
 
 	key := route.routeKey()
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	if routes, ok := g.routes[route.Host]; ok {
-		if r, ok = routes[key]; ok {
-			if err = g.delRoute(route); err == nil {
-				delete(routes, key)
-				if err := r.Forwarder.Close(); err != nil {
-					log.Printf("fail to close the forwarder '%s': %v\n", r.Forwarder.Name(), err)
-				}
-			}
-		}
+	routes, ok := g.routes[route.Host]
+	if !ok {
+		return Route{}, ErrNoHost
+	} else if r, ok = routes[key]; !ok {
+		return Route{}, ErrNoRoute
+	}
+
+	if err = g.delRoute(route); err != nil {
+		return
+	}
+
+	delete(routes, key)
+	if err := r.Forwarder.Close(); err != nil {
+		log.Printf("fail to close the forwarder '%s': %v\n", r.Forwarder.Name(), err)
 	}
 
 	return
