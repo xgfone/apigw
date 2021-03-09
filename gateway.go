@@ -240,13 +240,13 @@ func (g *Gateway) ResetGlobalMiddlewares(mws ...Middleware) {
 //
 // Notice: It can be called at any time.
 func (g *Gateway) RegisterHostMiddlewares(host string, mws ...Middleware) {
+	if len(mws) == 0 {
+		return
+	}
+
 	g.lock.Lock()
 	g.hostmdws[host] = append(g.hostmdws[host], mws...)
-	if len(g.hostmdws) == 0 {
-		atomic.StoreUint32(&g.hashmdw, 0)
-	} else {
-		atomic.StoreUint32(&g.hashmdw, 1)
-	}
+	atomic.StoreUint32(&g.hashmdw, 1)
 	g.lock.Unlock()
 }
 
@@ -256,10 +256,13 @@ func (g *Gateway) RegisterHostMiddlewares(host string, mws ...Middleware) {
 // Notice: It can be called at any time.
 func (g *Gateway) ResetHostMiddlewares(host string, mws ...Middleware) {
 	g.lock.Lock()
-	g.hostmdws[host] = append([]Middleware{}, mws...)
-	if len(g.hostmdws) == 0 {
-		atomic.StoreUint32(&g.hashmdw, 0)
+	if len(mws) == 0 {
+		delete(g.hostmdws, host)
+		if len(g.hostmdws) == 0 {
+			atomic.StoreUint32(&g.hashmdw, 0)
+		}
 	} else {
+		g.hostmdws[host] = append([]Middleware{}, mws...)
 		atomic.StoreUint32(&g.hashmdw, 1)
 	}
 	g.lock.Unlock()
