@@ -15,6 +15,7 @@
 package apigw
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -22,6 +23,13 @@ import (
 	"strings"
 
 	"github.com/xgfone/ship/v3"
+)
+
+// Predefine some errors.
+var (
+	ErrNoHost    = errors.New("no gateway host")
+	ErrNoRoute   = errors.New("no gateway route")
+	ErrEmptyPath = errors.New("the empty route path")
 )
 
 // RoutePluginConfig is used to configure the route plugin.
@@ -110,11 +118,13 @@ func (g *Gateway) HasHost(host string) bool {
 }
 
 // AddHost adds the host domain.
+//
+// If the host has been added, do nothing.
 func (g *Gateway) AddHost(host string) (err error) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	if _, ok := g.routes[host]; ok {
+	if _, ok := g.routes[host]; ok || host == "" {
 		return
 	} else if _, err = g.router.AddHost(host, nil); err == nil {
 		g.routes[host] = make(map[string]Route)
@@ -124,15 +134,14 @@ func (g *Gateway) AddHost(host string) (err error) {
 }
 
 // DelHost deletes the host domain and its routes.
+//
+// If the host does not exist, do nothing.
 func (g *Gateway) DelHost(host string) (err error) {
-	if host == "" {
-		return
-	}
-
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
 	if routes, ok := g.routes[host]; ok {
+		g.router.DelHost(host)
 		for _, r := range routes {
 			if err := r.Forwarder.Close(); err != nil {
 				log.Printf("fail to close the forwarder '%s': %v\n", r.Forwarder.Name(), err)
@@ -144,28 +153,34 @@ func (g *Gateway) DelHost(host string) (err error) {
 }
 
 // GetRoutes returns all the routes in the host domain.
-func (g *Gateway) GetRoutes(host string) (routes []Route) {
+//
+// If the host does not exist, reutrn (nil, ErrNoHost).
+func (g *Gateway) GetRoutes(host string) (routes []Route, err error) {
 	g.lock.RLock()
 	if rs, exist := g.routes[host]; exist {
 		routes = make([]Route, 0, len(rs))
 		for _, route := range rs {
 			routes = append(routes, route)
 		}
+	} else {
+		err = ErrNoHost
 	}
 	g.lock.RUnlock()
 	return
 }
 
 // GetRoute returns the full route.
-func (g *Gateway) GetRoute(host, path, method string) (route Route, ok bool) {
+func (g *Gateway) GetRoute(host, path, method string) (route Route, err error) {
 	if path == "" {
-		return
+		return Route{}, ErrEmptyPath
 	}
 
 	key := Route{Host: host, Path: path, Method: method}.routeKey()
 	g.lock.RLock()
-	if routes, exist := g.routes[host]; exist {
-		route, ok = routes[key]
+	if routes, exist := g.routes[host]; !exist {
+		err = ErrNoHost
+	} else if route, exist = routes[key]; !exist {
+		err = ErrNoRoute
 	}
 	g.lock.RUnlock()
 	return
