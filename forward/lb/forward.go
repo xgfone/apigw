@@ -144,7 +144,8 @@ func (f *Forwarder) AddBackend(b Backend) {
 func (f *Forwarder) DelBackend(b Backend) {
 	addr := b.String()
 	f.lock.Lock()
-	if _, ok := f.backends[addr]; !ok {
+	b, ok := f.backends[addr]
+	if !ok {
 		f.lock.Unlock()
 		return
 	}

@@ -68,7 +68,7 @@ func NewRoute(host, path, method string) Route {
 	return Route{Host: host, Path: path, Method: method}
 }
 
-// Name returns the unified name of the route.
+// Name returns the unified name of the route, which indicates a unique route.
 func (r Route) Name() string {
 	return strings.Join([]string{r.Host, r.Method, r.Path}, "@")
 }
@@ -134,7 +134,8 @@ func (g *Gateway) AddHost(host string) (err error) {
 	return
 }
 
-// DelHost deletes the host domain and its routes.
+// DelHost deletes the host domain and its routes, which also cleans
+// the middlewares and NotFound handlers associated with the host domain.
 //
 // If the host does not exist, do nothing.
 func (g *Gateway) DelHost(host string) (err error) {
@@ -190,9 +191,11 @@ func (g *Gateway) GetRoute(host, path, method string) (route Route, err error) {
 	return
 }
 
-// RegisterRoute registers the route and returns it.
+// RegisterRoute registers the route and returns it. But it will return
+// the registered route, if the route has been registered.
 //
-// Notice: If the route has been registered, returns the registered route.
+// Notice: Before registering the route, you must add the corresponding host.
+// Or return ErrNoHost.
 func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 	if route.Forwarder == nil {
 		return Route{}, fmt.Errorf("forward handler must not be nil")
@@ -241,6 +244,9 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 }
 
 // UnregisterRoute unregisters the route, and returns the registered real route.
+//
+// If the host does not exist, return ErrNoHost.
+// If the route is not registered, return ErrNoRoute.
 //
 // Notice: It only needs the fields of host, path and method,
 // and the others are ignored.

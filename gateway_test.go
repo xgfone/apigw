@@ -88,12 +88,19 @@ func TestGatewayMiddleware(t *testing.T) {
 	gw.RegisterHostMiddlewares(host, testMiddleware(host, 1, buf), testMiddleware(host, 2, buf))
 	gw.RegisterHostMiddlewares(rehost, testMiddleware(rehost, 1, buf), testMiddleware(rehost, 2, buf))
 
-	gw.RegisterRoute(apigw.Route{
+	if err := gw.AddHost(rehost); err != nil {
+		t.Fatalf("fail to add the host '%s': %s", host, err)
+	}
+
+	route := apigw.Route{
 		Host:      rehost,
 		Path:      "/",
 		Method:    http.MethodGet,
 		Forwarder: testForwarder{name: "test"},
-	})
+	}
+	if _, err := gw.RegisterRoute(route); err != nil {
+		t.Fatalf("fail to register the router '%s': %s", route.Name(), err)
+	}
 
 	rec := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "http://www.example.com", nil)

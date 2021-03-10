@@ -111,7 +111,12 @@ func newPanicPlugin(config interface{}) (apigw.Middleware, error) {
 }
 
 func main() {
-	host := "www.example.com"
+	host := "www.example.com" // Or the regexp host like `[a-zA-z0-9]+\.example\.com`
+
+	// Create the global health checker of the backend endpoint, that's, upstream server.
+	// But you can also ignore it and do not to use it.
+	healthChecker := loadbalancer.NewHealthCheck()
+	defer healthChecker.Stop()
 
 	// Parse the CLI arguments and the configuration file,
 	// and initialize the logging.
@@ -124,11 +129,18 @@ func main() {
 	// You can set the customized logger.
 	// gw.Router().SetLogger(logger)
 
+	// (Optional) Customize the host router manager based on the regular expression.
+	// The default implementation is based on the stdlib "regexp".
+	// gw.Router().SetNewRegexpHostRouter(newRegexpHostRouterFunc)
+
 	// Register the middlewares and the plugins.
 	gw.RegisterGlobalMiddlewares(gwMiddleware("middleware1"), gwMiddleware("middleware2"))
 	gw.RegisterPlugin(apigw.NewPlugin("panic", 3, newPanicPlugin))
 	gw.RegisterPlugin(apigw.NewPlugin("token", 1, newTokenAuthPlugin))
 	gw.RegisterPlugin(apigw.NewPlugin("log", 2, newLogPlugin))
+
+	// Add the host domain before registering the route.
+	gw.AddHost(host)
 
 	// (Optional) Set the middlewares only for the given host.
 	gw.RegisterHostMiddlewares(host, gwMiddleware(host))
@@ -137,11 +149,6 @@ func main() {
 	gw.SetHostNotFound(host, func(c *apigw.Context) error {
 		return c.Text(404, "no route: host=%s, method=%s, path=%s", host, c.Method(), c.Path())
 	})
-
-	// Create the global health checker of the backend endpoint, that's, upstream server.
-	// But you can also ignore it and do not to use it.
-	healthChecker := loadbalancer.NewHealthCheck()
-	defer healthChecker.Stop()
 
 	// Create some backend endpoints, such as HTTP, GRPC, etc.
 	backend1, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8001/:path", nil)
