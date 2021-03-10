@@ -51,25 +51,11 @@ func NewForwarder(name string, maxTimeout time.Duration) *Forwarder {
 }
 
 // Name returns the name of the forwarder and implements the interface
-// loadbalancer.Updater.
+// apigw.Forwarder, loadbalancer.Updater and BackendGroupUpdater.
 func (f *Forwarder) Name() string { return f.LoadBalancer.Name }
 
-// Endpoints returns all the underlying endpoints.
-func (f *Forwarder) Endpoints() loadbalancer.Endpoints {
-	return f.EndpointManager().Endpoints()
-}
-
-// AddEndpoint implements the interface loadbalancer.Updater.
-func (f *Forwarder) AddEndpoint(ep loadbalancer.Endpoint) {
-	f.EndpointManager().AddEndpoint(ep)
-}
-
-// DelEndpoint implements the interface loadbalancer.Updater.
-func (f *Forwarder) DelEndpoint(ep loadbalancer.Endpoint) {
-	f.EndpointManager().DelEndpoint(ep)
-}
-
-// Close cleans and releases the underlying resource.
+// Close implements the interface apigw.Forwarder to clean
+// and release the underlying resource.
 func (f *Forwarder) Close() error {
 	f.lock.RLock()
 	backends := make([]Backend, 0, len(f.backends))
@@ -85,6 +71,29 @@ func (f *Forwarder) Close() error {
 	}
 
 	return f.LoadBalancer.Close()
+}
+
+// Forward implements the interface apigw.Forwarder.
+func (f *Forwarder) Forward(ctx *apigw.Context) (err error) {
+	c := context.Background()
+	if f.Timeout > 0 {
+		var cancel func()
+		c, cancel = context.WithTimeout(c, f.Timeout)
+		defer cancel()
+	}
+
+	var req Request
+	if f.NewRequest == nil {
+		req = simpleRequest{ctx}
+	} else {
+		req = f.NewRequest(ctx)
+	}
+
+	if _, err = f.RoundTrip(c, req); err == loadbalancer.ErrNoAvailableEndpoint {
+		err = ship.ErrBadGateway.Newf("no available backends")
+	}
+
+	return
 }
 
 // AddBackendFromGroup implements the interface BackendGroupUpdater.
@@ -105,6 +114,24 @@ func (f *Forwarder) DelBackendFromGroup(b Backend) {
 	f.delBackend(b)
 }
 
+// Endpoints implements the interface loadbalancer.ProviderEndpointManager
+// to return all the underlying endpoints.
+func (f *Forwarder) Endpoints() loadbalancer.Endpoints {
+	return f.EndpointManager().Endpoints()
+}
+
+// AddEndpoint implements the interface loadbalancer.ProviderEndpointManager
+// and loadbalancer.Updater.
+func (f *Forwarder) AddEndpoint(ep loadbalancer.Endpoint) {
+	f.EndpointManager().AddEndpoint(ep)
+}
+
+// DelEndpoint implements the interface loadbalancer.ProviderEndpointManager
+// and loadbalancer.Updater.
+func (f *Forwarder) DelEndpoint(ep loadbalancer.Endpoint) {
+	f.EndpointManager().DelEndpoint(ep)
+}
+
 // AddBackends adds a set of Backends.
 func (f *Forwarder) AddBackends(backends []Backend) {
 	for i, _len := 0, len(backends); i < _len; i++ {
@@ -117,6 +144,32 @@ func (f *Forwarder) DelBackends(backends []Backend) {
 	for i, _len := 0, len(backends); i < _len; i++ {
 		f.DelBackend(backends[i])
 	}
+}
+
+// Backends returns all the backends.
+func (f *Forwarder) Backends() []Backend {
+	online := func(b Backend) bool { return true }
+	if f.HealthCheck != nil {
+		online = func(b Backend) bool {
+			if f.HealthCheck.IsHealthy(b.String()) {
+				return true
+			}
+
+			if _, ok := loadbalancer.UnwrapEndpoint(b).(BackendGroup); ok {
+				return b.IsHealthy(context.Background())
+			}
+
+			return false
+		}
+	}
+
+	f.lock.RLock()
+	bs := make([]Backend, 0, len(f.backends))
+	for _, b := range f.backends {
+		bs = append(bs, newEndpointBackend(b, online(b)))
+	}
+	f.lock.RUnlock()
+	return bs
 }
 
 // AddBackend adds the backend.
@@ -186,53 +239,4 @@ func (f *Forwarder) delBackend(b Backend) {
 		f.HealthCheck.DelEndpoint(b)
 	}
 	f.DelEndpoint(b)
-}
-
-// Backends returns all the backends.
-func (f *Forwarder) Backends() []Backend {
-	online := func(b Backend) bool { return true }
-	if f.HealthCheck != nil {
-		online = func(b Backend) bool {
-			if f.HealthCheck.IsHealthy(b.String()) {
-				return true
-			}
-
-			if _, ok := loadbalancer.UnwrapEndpoint(b).(BackendGroup); ok {
-				return b.IsHealthy(context.Background())
-			}
-
-			return false
-		}
-	}
-
-	f.lock.RLock()
-	bs := make([]Backend, 0, len(f.backends))
-	for _, b := range f.backends {
-		bs = append(bs, newEndpointBackend(b, online(b)))
-	}
-	f.lock.RUnlock()
-	return bs
-}
-
-// Forward implements the interface Forwarder.
-func (f *Forwarder) Forward(ctx *apigw.Context) (err error) {
-	c := context.Background()
-	if f.Timeout > 0 {
-		var cancel func()
-		c, cancel = context.WithTimeout(c, f.Timeout)
-		defer cancel()
-	}
-
-	var req Request
-	if f.NewRequest == nil {
-		req = simpleRequest{ctx}
-	} else {
-		req = f.NewRequest(ctx)
-	}
-
-	if _, err = f.RoundTrip(c, req); err == loadbalancer.ErrNoAvailableEndpoint {
-		err = ship.ErrBadGateway.Newf("no available backends")
-	}
-
-	return
 }
