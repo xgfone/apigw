@@ -10,15 +10,15 @@ Another simple, flexible, high performance api gateway library implemented by Go
 - Support the group of the upstream servers as the backend.
 - Support to customize the backend forwarder of the route.
 - Most of the functions are implemented by the plugin mode.
-- Too few core engine codes, ~1300 lines.
+- Too few core engine codes, ~1400 lines.
     ```shell
     $ cloc --exclude-dir=plugins --not-match-f=_test.go --include-lang=Go --quiet .
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code
     -------------------------------------------------------------------------------
-    Go                              16            288            422           1300
+    Go                              17            319            492           1411
     -------------------------------------------------------------------------------
-    SUM:                            16            288            422           1300
+    SUM:                            17            319            492           1411
     -------------------------------------------------------------------------------
     ```
 
