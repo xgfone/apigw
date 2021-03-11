@@ -193,8 +193,8 @@ func (e httpBackend) IsHealthy(c context.Context) bool {
 	return false
 }
 
-func (e httpBackend) RoundTrip(c context.Context, r loadbalancer.Request) (loadbalancer.Response, error) {
-	ctx := r.(lb.Request).Context()
+func (e httpBackend) RoundTrip(c context.Context, r lb.Request) (lb.Response, error) {
+	ctx := r.(lb.HTTPRequest).Context()
 
 	url, err := e.getBackendURL(ctx)
 	if err != nil {

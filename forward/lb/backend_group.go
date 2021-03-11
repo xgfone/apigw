@@ -14,10 +14,6 @@
 
 package lb
 
-import (
-	"io"
-)
-
 // BackendGroupUpdater is used to update the backend from the group.
 type BackendGroupUpdater interface {
 	Name() string
@@ -27,20 +23,7 @@ type BackendGroupUpdater interface {
 
 // BackendGroup is used to manage a group of Backend.
 type BackendGroup interface {
-	io.Closer
-
-	// Name returns the name of the group.
-	Name() string
-
-	// AddBackend adds the backend into the group.
-	//
-	// If the backend has been added, do nothing.
-	AddBackend(Backend)
-
-	// DelBackend deletes the backend from the group.
-	//
-	// If the backend does not exist, do nothing.
-	DelBackend(Backend)
+	BackendUpdater
 
 	// GetBackends returns all the backends in the group.
 	GetBackends() []Backend

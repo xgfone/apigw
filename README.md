@@ -1,6 +1,6 @@
 # apigw [![Build Status](https://travis-ci.org/xgfone/apigw.svg?branch=master)](https://travis-ci.org/xgfone/apigw) [![GoDoc](https://godoc.org/github.com/xgfone/apigw?status.svg)](https://pkg.go.dev/github.com/xgfone/apigw) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/apigw/master/LICENSE)
 
-Another simple, flexible, high performance api gateway library implemented by Go. For the binary program, see the another repository [apigateway](https://github.com/xgfone/apigateway).
+Another simple, flexible, high performance api gateway library implemented by Go(**`≥go1.14`**). For the binary program, see the another repository [apigateway](https://github.com/xgfone/apigateway).
 
 
 ### Features
@@ -10,15 +10,15 @@ Another simple, flexible, high performance api gateway library implemented by Go
 - Support the group of the upstream servers as the backend.
 - Support to customize the backend forwarder of the route.
 - Most of the functions are implemented by the plugin mode.
-- Too few core engine codes, ~1400 lines.
+- Too few core engine codes, ~1500 lines.
     ```shell
     $ cloc --exclude-dir=plugins --not-match-f=_test.go --include-lang=Go --quiet .
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code
     -------------------------------------------------------------------------------
-    Go                              17            319            492           1411
+    Go                              17            331            480           1451
     -------------------------------------------------------------------------------
-    SUM:                            17            319            492           1411
+    SUM:                            17            331            480           1451
     -------------------------------------------------------------------------------
     ```
 
@@ -155,13 +155,22 @@ func main() {
 	backend2, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8002/:path", nil)
 
 	// Create the route.
+	fconfig := &lb.ForwarderConfig{
+		MaxTimeout: time.Minute,
+
+		// For the health check of backends, or not use it
+		HealthCheck: healthChecker,
+
+		// For session stick, or not use it
+		UpdateLoadBalancer: func(lb *loadbalancer.LoadBalancer) {
+			lb.Session = loadbalancer.NewMemorySessionManager()
+		},
+	}
 	route := apigw.NewRoute(host, "/v1/:path", http.MethodGet)
-	forwarder := lb.NewForwarder(route.Name(), time.Minute)    // Create the backend forwarder for the route
-	forwarder.Session = loadbalancer.NewMemorySessionManager() // For session stick, or not use it
-	forwarder.HealthCheck = healthChecker                      // For the health check of backends, or not use it
-	forwarder.AddBackends([]lb.Backend{backend1, backend2})    // Add the backends specific to the route
-	route.Forwarder = forwarder                                // Set the backend forwarder for the route
-	route.Plugins = []apigw.RoutePlugin{                       // Set the plugins which the route will use
+	forwarder := lb.NewForwarder(route.Name(), fconfig)
+	forwarder.AddBackends(backend1, backend2) // Add the backends specific to the route
+	route.Forwarder = forwarder               // Set the backend forwarder for the route
+	route.Plugins = []apigw.RoutePlugin{      // Set the plugins which the route will use
 		{Name: "token", Config: "authentication_token"},
 		{Name: "log"},
 

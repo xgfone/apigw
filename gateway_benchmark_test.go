@@ -32,6 +32,7 @@ type fakeBackend struct {
 func newFakeBackend(name string) fakeBackend           { return fakeBackend{name: name} }
 func (b fakeBackend) Type() string                     { return "fake" }
 func (b fakeBackend) String() string                   { return b.name }
+func (b fakeBackend) HealthCheck() lb.HealthCheck      { return lb.HealthCheck{} }
 func (b fakeBackend) UserData() interface{}            { return nil }
 func (b fakeBackend) MetaData() map[string]interface{} { return nil }
 func (b fakeBackend) IsHealthy(context.Context) bool   { return true }
@@ -65,9 +66,9 @@ func newReqCountPlugin(config interface{}) (apigw.Middleware, error) {
 func BenchmarkGatewayWithoutPlugins(b *testing.B) {
 	gw := apigw.NewGateway()
 
-	forwarder := lb.NewForwarder("benchmark", 0)
-	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend1"))
-	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend2"))
+	forwarder := lb.NewForwarder("benchmark", nil)
+	forwarder.AddBackend(newFakeBackend("backend1"))
+	forwarder.AddBackend(newFakeBackend("backend2"))
 	gw.RegisterRoute(apigw.Route{
 		Host:      "www.example.com",
 		Path:      "/v1/:path",
@@ -90,9 +91,9 @@ func BenchmarkGatewayWithPlugins(b *testing.B) {
 	gw.RegisterPlugin(apigw.NewPlugin("panic", 2, newPanicErrorPlugin))
 	gw.RegisterPlugin(apigw.NewPlugin("count", 1, newReqCountPlugin))
 
-	forwarder := lb.NewForwarder("benchmark", 0)
-	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend1"))
-	forwarder.EndpointManager().AddEndpoint(newFakeBackend("backend2"))
+	forwarder := lb.NewForwarder("benchmark", nil)
+	forwarder.AddBackend(newFakeBackend("backend1"))
+	forwarder.AddBackend(newFakeBackend("backend2"))
 	gw.RegisterRoute(apigw.Route{
 		Host:      "www.example.com",
 		Path:      "/v1/:path",

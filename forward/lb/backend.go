@@ -18,25 +18,9 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/xgfone/go-service/loadbalancer"
 )
-
-// HealthCheck is the information of the health check of the endpoint.
-type HealthCheck struct {
-	Timeout  time.Duration `json:"timeout,omitempty" xml:"timeout,omitempty"`
-	Interval time.Duration `json:"interval,omitempty" xml:"interval,omitempty"`
-	RetryNum int           `json:"retrynum,omitempty" xml:"retrynum,omitempty"`
-}
-
-// Backend represents the forwarded backend used by Forwarder.
-//
-// Notice: The Forwarder backend must implement the interface.
-type Backend interface {
-	loadbalancer.Endpoint
-	HealthCheck() HealthCheck
-}
 
 // NewBackendWithHealthCheck returns a new backend with the new HealthCheck.
 func NewBackendWithHealthCheck(b Backend, hc HealthCheck) Backend {

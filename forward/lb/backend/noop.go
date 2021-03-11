@@ -19,7 +19,6 @@ import (
 	"fmt"
 
 	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/go-service/loadbalancer"
 )
 
 var _ lb.Backend = noopBackend{}
@@ -53,7 +52,6 @@ func (b noopBackend) UserData() interface{}            { return b.data }
 func (b noopBackend) MetaData() map[string]interface{} {
 	return map[string]interface{}{"name": b.name}
 }
-func (b noopBackend) RoundTrip(c context.Context, r loadbalancer.Request) (
-	loadbalancer.Response, error) {
-	return nil, r.(lb.Request).Context().Text(200, b.name)
+func (b noopBackend) RoundTrip(c context.Context, r lb.Request) (lb.Response, error) {
+	return nil, r.(lb.HTTPRequest).Context().Text(200, b.name)
 }

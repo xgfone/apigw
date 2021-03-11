@@ -19,8 +19,8 @@ import (
 	"github.com/xgfone/go-service/loadbalancer"
 )
 
-// Request is used to represent the request context passed to the backend.
-type Request interface {
+// HTTPRequest is used to represent the request context passed to the backend.
+type HTTPRequest interface {
 	loadbalancer.Request
 	Context() *apigw.Context
 }
@@ -28,7 +28,7 @@ type Request interface {
 // NewRequest returns the loadbackend request.
 //
 // Notice: getSessionID may be nil.
-func NewRequest(ctx *apigw.Context, getSessionID func(*apigw.Context) string) Request {
+func NewRequest(ctx *apigw.Context, getSessionID func(*apigw.Context) string) HTTPRequest {
 	return sidRequest{ctx: ctx, sid: getSessionID}
 }
 

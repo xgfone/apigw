@@ -19,7 +19,6 @@ import (
 	"sync/atomic"
 
 	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/ship/v3"
 )
 
@@ -40,7 +39,7 @@ type qpsBackend struct {
 	curQPS int64
 }
 
-func (b *qpsBackend) Unwrap() loadbalancer.Endpoint { return b.Backend }
+func (b *qpsBackend) UnwrapBackend() lb.Backend { return b.Backend }
 
 func (b *qpsBackend) MetaData() map[string]interface{} {
 	md := b.Backend.MetaData()
@@ -49,8 +48,7 @@ func (b *qpsBackend) MetaData() map[string]interface{} {
 	return md
 }
 
-func (b *qpsBackend) RoundTrip(c context.Context, r loadbalancer.Request) (
-	loadbalancer.Response, error) {
+func (b *qpsBackend) RoundTrip(c context.Context, r lb.Request) (lb.Response, error) {
 	if b.maxQPS == 0 {
 		return b.Backend.RoundTrip(c, r)
 	}

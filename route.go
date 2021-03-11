@@ -44,7 +44,7 @@ func (rpc1 RoutePlugin) equal(rpc2 RoutePlugin) bool {
 
 // Forwarder is used to forward the http request to the backend server.
 type Forwarder interface {
-	Forward(ctx *Context) error
+	Forward(*Context) error
 	Name() string
 	io.Closer
 }

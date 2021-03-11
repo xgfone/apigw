@@ -67,12 +67,12 @@ func (g *Gateway) DelHost(host string) (err error) {
 }
 
 // GetRouteForwarder returns the forwarder of the route.
-func (g *Gateway) GetRouteForwarder(host, path, method string) (*Forwarder, error) {
+func (g *Gateway) GetRouteForwarder(host, path, method string) (Forwarder, error) {
 	route, err := g.GetRoute(host, path, method)
 	if err != nil {
 		return nil, err
 	}
-	return route.Forwarder.(*Forwarder), nil
+	return route.Forwarder.(Forwarder), nil
 }
 
 // GetRouteBackends returns all the backends of the route, which not containing
@@ -81,7 +81,7 @@ func (g *Gateway) GetRouteForwarder(host, path, method string) (*Forwarder, erro
 func (g *Gateway) GetRouteBackends(host, path, method string) (bs []Backend, err error) {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		bs = forwarder.Backends()
+		bs = forwarder.GetBackends()
 	}
 	return
 }
@@ -90,7 +90,7 @@ func (g *Gateway) GetRouteBackends(host, path, method string) (bs []Backend, err
 func (g *Gateway) AddRouteBackends(host, path, method string, backends ...Backend) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.AddBackends(backends)
+		forwarder.AddBackends(backends...)
 	}
 	return nil
 }
@@ -99,7 +99,7 @@ func (g *Gateway) AddRouteBackends(host, path, method string, backends ...Backen
 func (g *Gateway) DelRouteBackends(host, path, method string, backends ...Backend) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.DelBackends(backends)
+		forwarder.DelBackends(backends...)
 	}
 	return nil
 }

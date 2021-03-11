@@ -114,13 +114,22 @@ func ExampleGateway() {
 	backend2, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8002/:path", nil)
 
 	// Create the route.
+	fconfig := &lb.ForwarderConfig{
+		MaxTimeout: time.Minute,
+
+		// For the health check of backends, or not use it
+		HealthCheck: healthChecker,
+
+		// For session stick, or not use it
+		UpdateLoadBalancer: func(lb *loadbalancer.LoadBalancer) {
+			lb.Session = loadbalancer.NewMemorySessionManager()
+		},
+	}
 	route := apigw.NewRoute(host, "/v1/:path", http.MethodGet)
-	forwarder := lb.NewForwarder(route.Name(), time.Minute)    // Create the backend forwarder for the route
-	forwarder.Session = loadbalancer.NewMemorySessionManager() // For session stick, or not use it
-	forwarder.HealthCheck = healthChecker                      // For the health check of backends, or not use it
-	forwarder.AddBackends([]lb.Backend{backend1, backend2})    // Add the backends specific to the route
-	route.Forwarder = forwarder                                // Set the backend forwarder for the route
-	route.Plugins = []apigw.RoutePlugin{                       // Set the plugins which the route will use
+	forwarder := lb.NewForwarder(route.Name(), fconfig)
+	forwarder.AddBackends(backend1, backend2) // Add the backends specific to the route
+	route.Forwarder = forwarder               // Set the backend forwarder for the route
+	route.Plugins = []apigw.RoutePlugin{      // Set the plugins which the route will use
 		{Name: "token", Config: "authentication_token"},
 		{Name: "log"},
 

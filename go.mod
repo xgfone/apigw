@@ -5,4 +5,4 @@ require (
 	github.com/xgfone/ship/v3 v3.11.1
 )
 
-go 1.11
+go 1.14

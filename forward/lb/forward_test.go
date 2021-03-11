@@ -47,35 +47,21 @@ func (b noopBackend) Metadata() map[string]interface{} {
 }
 
 func TestForwarder_Backends(t *testing.T) {
-	f := lb.NewForwarder("", 0)
+	hc := loadbalancer.NewHealthCheck()
+	defer hc.Stop()
+
+	f := lb.NewForwarder("", &lb.ForwarderConfig{HealthCheck: hc})
 	backend1 := newNoopBackend("backend1", false)
 	backend2 := newNoopBackend("backend2", false)
 	backend3 := newNoopBackend("backend3", false)
 
-	f.AddBackend(backend1)
-	f.AddBackend(backend2)
-	f.AddBackend(backend3)
-	for _, b := range f.Backends() {
-		if healthy := b.IsHealthy(context.Background()); !healthy {
-			t.Errorf("Backend %s: expect '%v', but got '%v'", b.String(), true, false)
-		}
-	}
-
-	f.DelBackend(backend1)
-	f.DelBackend(backend2)
-	f.DelBackend(backend3)
-	if backends := f.Backends(); len(backends) != 0 {
-		t.Error(backends)
-	}
-
-	f.HealthCheck = loadbalancer.NewHealthCheck()
-	f.HealthCheck.Interval = 10 * time.Millisecond
-	f.HealthCheck.Subscribe("", f)
+	hc.Interval = 10 * time.Millisecond
+	hc.Subscribe("", f.(loadbalancer.Updater))
 	f.AddBackend(backend1)
 	f.AddBackend(backend2)
 	f.AddBackend(backend3)
 	time.Sleep(time.Millisecond * 200)
-	for _, b := range f.Backends() {
+	for _, b := range f.GetBackends() {
 		if healthy := b.IsHealthy(context.Background()); healthy {
 			t.Errorf("Backend %s: expect '%v', but got '%v'", b.String(), false, true)
 		}
@@ -85,7 +71,7 @@ func TestForwarder_Backends(t *testing.T) {
 	f.DelBackend(backend2)
 	f.DelBackend(backend3)
 	time.Sleep(time.Millisecond * 100)
-	if backends := f.Backends(); len(backends) != 0 {
+	if backends := f.GetBackends(); len(backends) != 0 {
 		t.Error(backends)
 	}
 
@@ -96,12 +82,9 @@ func TestForwarder_Backends(t *testing.T) {
 	f.AddBackend(backend2)
 	f.AddBackend(backend3)
 	time.Sleep(time.Millisecond * 200)
-	for _, b := range f.Backends() {
+	for _, b := range f.GetBackends() {
 		if healthy := b.IsHealthy(context.Background()); !healthy {
 			t.Errorf("Backend %s: expect '%v', but got '%v'", b.String(), true, false)
 		}
 	}
-
-	f.HealthCheck.Stop()
-
 }
