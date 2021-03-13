@@ -79,6 +79,12 @@ func NewGateway() *Gateway {
 	return g
 }
 
+// Name returns the name of the gateway.
+func (g *Gateway) Name() string { return g.router.Name }
+
+// SetName resets the name of the gateway. The default is empty.
+func (g *Gateway) SetName(name string) { g.router.Name = name }
+
 // ExecuteRoute executes the route, which will execute the middlewares,
 // find the route by the method and path from the underlying router,
 // then execute the route handler.
