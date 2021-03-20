@@ -39,16 +39,14 @@ type qpsBackend struct {
 	curQPS int64
 }
 
-func (b *qpsBackend) UnwrapBackend() lb.Backend { return b.Backend }
-
+func (b *qpsBackend) UnwrapEndpoint() lb.Backend { return b.Backend }
 func (b *qpsBackend) MetaData() map[string]interface{} {
 	md := b.Backend.MetaData()
 	md["qps"] = b.maxQPS
-	md["reqs"] = atomic.LoadInt64(&b.curQPS)
 	return md
 }
 
-func (b *qpsBackend) RoundTrip(c context.Context, r lb.Request) (lb.Response, error) {
+func (b *qpsBackend) RoundTrip(c context.Context, r lb.Request) (interface{}, error) {
 	if b.maxQPS == 0 {
 		return b.Backend.RoundTrip(c, r)
 	}

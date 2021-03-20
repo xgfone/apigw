@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/go-service/loadbalancer"
+	slb "github.com/xgfone/go-service/loadbalancer"
 )
 
 type noopBackend struct {
@@ -32,31 +32,25 @@ func newNoopBackend(name string, healthy bool) noopBackend {
 	return noopBackend{name: name, healthy: healthy}
 }
 
-func (b noopBackend) Type() string                     { return "noop" }
-func (b noopBackend) String() string                   { return b.name }
-func (b noopBackend) UserData() interface{}            { return nil }
-func (b noopBackend) MetaData() map[string]interface{} { return nil }
-func (b noopBackend) IsHealthy(c context.Context) bool { return b.healthy }
-func (b noopBackend) HealthCheck() (hc lb.HealthCheck) { return }
-func (b noopBackend) RoundTrip(c context.Context, r loadbalancer.Request) (
-	loadbalancer.Response, error) {
-	return nil, nil
-}
-func (b noopBackend) Metadata() map[string]interface{} {
-	return map[string]interface{}{"name": b.name}
-}
+func (b noopBackend) Type() string                                                { return "noop" }
+func (b noopBackend) String() string                                              { return b.name }
+func (b noopBackend) State() (s slb.EndpointState)                                { return }
+func (b noopBackend) MetaData() map[string]interface{}                            { return nil }
+func (b noopBackend) IsHealthy(context.Context) bool                              { return b.healthy }
+func (b noopBackend) RoundTrip(context.Context, slb.Request) (interface{}, error) { return nil, nil }
 
 func TestForwarder_Backends(t *testing.T) {
-	hc := loadbalancer.NewHealthCheck()
+	hc := slb.NewHealthCheck()
 	defer hc.Stop()
 
-	f := lb.NewForwarder("", &lb.ForwarderConfig{HealthCheck: hc})
+	f := lb.NewForwarder("")
+	f.HealthCheck = hc
 	backend1 := newNoopBackend("backend1", false)
 	backend2 := newNoopBackend("backend2", false)
 	backend3 := newNoopBackend("backend3", false)
 
-	hc.Interval = 10 * time.Millisecond
-	hc.Subscribe("", f.(loadbalancer.Updater))
+	hc.SetDefaultOption(slb.HealthCheckOption{Interval: 10 * time.Millisecond})
+	hc.Subscribe("", f)
 	f.AddBackend(backend1)
 	f.AddBackend(backend2)
 	f.AddBackend(backend3)

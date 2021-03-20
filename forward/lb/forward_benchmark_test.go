@@ -25,9 +25,9 @@ import (
 )
 
 func BenchmarkLBForwarder(b *testing.B) {
-	forwarder := lb.NewForwarder("", nil)
-	forwarder.AddBackend(backend.NewNoopBackend("server1", true))
-	forwarder.AddBackend(backend.NewNoopBackend("server2", true))
+	forwarder := lb.NewForwarder("")
+	forwarder.AddBackend(backend.NewNoopBackend("server1"))
+	forwarder.AddBackend(backend.NewNoopBackend("server2"))
 
 	req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1", nil)
 	ctx := ship.NewContext(0, 0)

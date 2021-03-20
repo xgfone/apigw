@@ -27,9 +27,10 @@ import (
 
 // Predefine some errors.
 var (
-	ErrNoHost    = errors.New("no gateway host")
-	ErrNoRoute   = errors.New("no gateway route")
-	ErrEmptyPath = errors.New("the empty route path")
+	ErrNoHost       = errors.New("no gateway host")
+	ErrNoRoute      = errors.New("no gateway route")
+	ErrEmptyPath    = errors.New("the empty route path")
+	ErrExistedRoute = errors.New("the existed route")
 )
 
 // RoutePlugin is used to configure the route plugin.
@@ -77,19 +78,20 @@ func (r Route) routeKey() string {
 	return strings.Join([]string{r.Method, r.Path}, "@")
 }
 
-func (r Route) equal(r2 Route) bool {
-	if r.Host != r2.Host || r.Path != r2.Path || r.Method != r2.Method {
+// Equal reports whether the route is eqaul to other.
+func (r Route) Equal(other Route) bool {
+	if r.Host != other.Host || r.Path != other.Path || r.Method != other.Method {
 		return false
 	}
 
 	pc1len := len(r.Plugins)
-	pc2len := len(r2.Plugins)
+	pc2len := len(other.Plugins)
 	if pc1len != pc2len {
 		return false
 	}
 
 	for i := 0; i < pc1len; i++ {
-		if !r.Plugins[i].equal(r2.Plugins[i]) {
+		if !r.Plugins[i].equal(other.Plugins[i]) {
 			return false
 		}
 	}
@@ -192,7 +194,7 @@ func (g *Gateway) GetRoute(host, path, method string) (route Route, err error) {
 }
 
 // RegisterRoute registers the route and returns it. But it will return
-// the registered route, if the route has been registered.
+// the registered route and ErrExistedRoute, if the route has been registered.
 //
 // Notice: Before registering the route, you must add the corresponding host.
 // Or return ErrNoHost.
@@ -233,6 +235,7 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 	if routes, ok := g.routes[route.Host]; !ok {
 		return Route{}, ErrNoHost
 	} else if r, ok = routes[key]; ok {
+		err = ErrExistedRoute
 		return
 	} else if err = g.addRoute(route); err != nil {
 		return

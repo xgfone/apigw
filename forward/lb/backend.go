@@ -17,23 +17,32 @@ package lb
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 
-	"github.com/xgfone/go-service/loadbalancer"
+	slb "github.com/xgfone/go-service/loadbalancer"
 )
 
-// NewBackendWithHealthCheck returns a new backend with the new HealthCheck.
-func NewBackendWithHealthCheck(b Backend, hc HealthCheck) Backend {
-	return hcBackend{Backend: b, hc: hc}
-}
+// Backend represents the forwarded backend used by Forwarder.
+type Backend = slb.Endpoint
 
-type hcBackend struct {
-	hc HealthCheck
-	Backend
-}
+// BackendUpdater is used to add or delete the backend.
+type BackendUpdater interface {
+	io.Closer
 
-func (b hcBackend) Unwrap() loadbalancer.Endpoint { return b.Backend }
-func (b hcBackend) HealthCheck() HealthCheck      { return b.hc }
+	// Name returns the name of the group.
+	Name() string
+
+	// AddBackend adds the backend into the group.
+	//
+	// If the backend has been added, do nothing.
+	AddBackend(Backend)
+
+	// DelBackend deletes the backend from the group.
+	//
+	// If the backend does not exist, do nothing.
+	DelBackend(Backend)
+}
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -46,7 +55,7 @@ func newEndpointBackend(b Backend, online bool) endpointBackend {
 	return endpointBackend{Backend: b, online: online}
 }
 
-func (eb endpointBackend) Unwrap() loadbalancer.Endpoint  { return eb.Backend }
+func (eb endpointBackend) UnwrapEndpoint() slb.Endpoint   { return eb.Backend }
 func (eb endpointBackend) IsHealthy(context.Context) bool { return eb.online }
 func (eb endpointBackend) MetaData() map[string]interface{} {
 	md := eb.Backend.MetaData()
@@ -58,9 +67,7 @@ func (eb endpointBackend) MetaData() map[string]interface{} {
 
 // GroupBackendConfig is used to configure the group backend.
 type GroupBackendConfig struct {
-	UserData    interface{}
-	HealthCheck HealthCheck
-	IsHealthy   func(Backend) bool
+	IsHealthy func(Backend) bool
 }
 
 // GroupBackend is the group backend, which implements the interface Backend
@@ -98,20 +105,17 @@ func NewGroupBackend(name string, config *GroupBackendConfig) *GroupBackend {
 	}
 }
 
-// Type implements the interface Backend.
-func (b *GroupBackend) Type() string { return "group" }
-
 // String implements the interface fmt.Stringer.
 func (b *GroupBackend) String() string { return b.name }
 
+// Type implements the interface Backend.
+func (b *GroupBackend) Type() string { return "group" }
+
+// State implements the interface Backend.
+func (b *GroupBackend) State() BackendState { return BackendState{} }
+
 // IsHealthy implements the interface Backend.
 func (b *GroupBackend) IsHealthy(c context.Context) bool { return true }
-
-// HealthCheck implements the interface Backend.
-func (b *GroupBackend) HealthCheck() HealthCheck { return b.conf.HealthCheck }
-
-// UserData implements the interface Backend.
-func (b *GroupBackend) UserData() interface{} { return b.conf.UserData }
 
 // MetaData implements the interface Backend.
 func (b *GroupBackend) MetaData() map[string]interface{} {
@@ -119,8 +123,7 @@ func (b *GroupBackend) MetaData() map[string]interface{} {
 }
 
 // RoundTrip implements the interface Backend.
-func (b *GroupBackend) RoundTrip(c context.Context, r loadbalancer.Request) (
-	loadbalancer.Response, error) {
+func (b *GroupBackend) RoundTrip(c context.Context, r slb.Request) (interface{}, error) {
 	panic("GroupBackend.RoundTrip: not implemented")
 }
 

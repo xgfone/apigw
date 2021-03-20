@@ -26,8 +26,6 @@ var builders = make(map[string]Builder, 4)
 // BuilderContext is the context of the builder.
 type BuilderContext struct {
 	apigw.Route
-	lb.HealthCheck
-	UserData interface{}
 	MetaData map[string]interface{}
 }
 

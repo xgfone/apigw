@@ -64,6 +64,9 @@ func GetGateways() []*Gateway {
 	return gs
 }
 
+// DefalutMaxBodySize is the default maximum size of the request body.
+var DefalutMaxBodySize = 8 << 20 // 8MB
+
 // DefaultGateway is the default global Gateway.
 var DefaultGateway = NewGateway()
 
@@ -84,6 +87,9 @@ type (
 
 // Gateway is an api gateway.
 type Gateway struct {
+	// Context is the user-defined context data.
+	Context interface{}
+
 	mdws   []Middleware
 	router *ship.Ship
 
@@ -110,6 +116,7 @@ func NewGateway() *Gateway {
 	g.router.Lock = new(sync.RWMutex)
 	g.router.NotFound = g.NotFoundHandler
 	g.router.HandleError = g.handleError
+	g.router.MaxBodySize = DefalutMaxBodySize
 	g.router.RouteExecutor = g.ExecuteRoute
 	g.router.SetNewRouter(func() router.Router {
 		return router.NewLockRouter(echo.NewRouter(nil, nil))
@@ -122,6 +129,12 @@ func (g *Gateway) Name() string { return g.router.Name }
 
 // SetName resets the name of the gateway. The default is empty.
 func (g *Gateway) SetName(name string) { g.router.Name = name }
+
+// SetMaxBodySize resets the maxinum size of the request body.
+// And 0 represents no limit.
+//
+// Default: DefalutMaxBodySize
+func (g *Gateway) SetMaxBodySize(maxSize int) { g.router.MaxBodySize = maxSize }
 
 // ExecuteRoute executes the route, which will execute the middlewares,
 // find the route by the method and path from the underlying router,
@@ -214,7 +227,6 @@ func (g *Gateway) SetHostNotFound(host string, handler Handler) {
 		g.notfounds[host] = handler
 	}
 	g.lock.Unlock()
-	return
 }
 
 // SetDefaultNotFound sets the default NotFound handler.

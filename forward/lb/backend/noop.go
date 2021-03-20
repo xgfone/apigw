@@ -16,42 +16,30 @@ package backend
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/xgfone/apigw/forward/lb"
 )
 
-var _ lb.Backend = noopBackend{}
-
-func init() {
-	RegisterBuilder(NewBuilder("noop", func(c BuilderContext) (lb.Backend, error) {
-		name, _ := c.MetaData["name"].(string)
-		if name == "" {
-			return nil, fmt.Errorf("missing the string name")
-		}
-		return NewNoopBackend(name, c.UserData), nil
-	}))
-}
-
 // NewNoopBackend returns a new noop backend, which is only used to test
 // the performance of the gateway framework.
-func NewNoopBackend(name string, userdata interface{}) lb.Backend {
-	return noopBackend{name: name, data: userdata}
+func NewNoopBackend(name string) lb.Backend {
+	return &noopBackend{name: name}
 }
 
 type noopBackend struct {
-	name string
-	data interface{}
+	name  string
+	state lb.ConnectionState
 }
 
-func (b noopBackend) Type() string                     { return "noop" }
-func (b noopBackend) String() string                   { return b.name }
-func (b noopBackend) IsHealthy(c context.Context) bool { return true }
-func (b noopBackend) HealthCheck() lb.HealthCheck      { return lb.HealthCheck{} }
-func (b noopBackend) UserData() interface{}            { return b.data }
-func (b noopBackend) MetaData() map[string]interface{} {
+func (b *noopBackend) Type() string                     { return "noop" }
+func (b *noopBackend) String() string                   { return b.name }
+func (b *noopBackend) State() lb.EndpointState          { return b.state.ToEndpointState() }
+func (b *noopBackend) IsHealthy(c context.Context) bool { return true }
+func (b *noopBackend) MetaData() map[string]interface{} {
 	return map[string]interface{}{"name": b.name}
 }
-func (b noopBackend) RoundTrip(c context.Context, r lb.Request) (lb.Response, error) {
-	return nil, r.(lb.HTTPRequest).Context().Text(200, b.name)
+func (b *noopBackend) RoundTrip(c context.Context, r lb.Request) (interface{}, error) {
+	b.state.Inc()
+	defer b.state.Dec()
+	return nil, nil
 }

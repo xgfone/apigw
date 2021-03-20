@@ -18,28 +18,25 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/xgfone/apigw"
 	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/go-service/loadbalancer"
+	slb "github.com/xgfone/go-service/loadbalancer"
 )
 
 type fakeBackend struct {
 	name string
 }
 
-func newFakeBackend(name string) fakeBackend           { return fakeBackend{name: name} }
-func (b fakeBackend) Type() string                     { return "fake" }
-func (b fakeBackend) String() string                   { return b.name }
-func (b fakeBackend) HealthCheck() lb.HealthCheck      { return lb.HealthCheck{} }
-func (b fakeBackend) UserData() interface{}            { return nil }
-func (b fakeBackend) MetaData() map[string]interface{} { return nil }
-func (b fakeBackend) IsHealthy(context.Context) bool   { return true }
-func (b fakeBackend) RoundTrip(c context.Context, r loadbalancer.Request) (loadbalancer.Response, error) {
-	// r.(lb.Request).Context().Text(200, b.name)
-	return nil, nil
-}
+func newFakeBackend(name string) fakeBackend                                      { return fakeBackend{name: name} }
+func (b fakeBackend) Type() string                                                { return "fake" }
+func (b fakeBackend) String() string                                              { return b.name }
+func (b fakeBackend) State() (s slb.EndpointState)                                { return }
+func (b fakeBackend) MetaData() map[string]interface{}                            { return nil }
+func (b fakeBackend) IsHealthy(context.Context) bool                              { return true }
+func (b fakeBackend) RoundTrip(context.Context, slb.Request) (interface{}, error) { return nil, nil }
 
 func newPanicErrorPlugin(config interface{}) (apigw.Middleware, error) {
 	return func(next apigw.Handler) apigw.Handler {
@@ -56,22 +53,23 @@ func newReqCountPlugin(config interface{}) (apigw.Middleware, error) {
 	return func(next apigw.Handler) apigw.Handler {
 		var count int64
 		return func(ctx *apigw.Context) error {
-			count++
-			defer func() { count-- }()
+			atomic.AddInt64(&count, 1)
+			defer atomic.AddInt64(&count, -1)
 			return next(ctx)
 		}
 	}, nil
 }
 
 func BenchmarkGatewayWithoutPlugins(b *testing.B) {
-	gw := apigw.NewGateway()
-
-	forwarder := lb.NewForwarder("benchmark", nil)
+	forwarder := lb.NewForwarder("benchmark")
 	forwarder.AddBackend(newFakeBackend("backend1"))
 	forwarder.AddBackend(newFakeBackend("backend2"))
+
+	gw := apigw.NewGateway()
+	gw.AddHost("www.example.com")
 	gw.RegisterRoute(apigw.Route{
 		Host:      "www.example.com",
-		Path:      "/v1/:path",
+		Path:      "/v1/test",
 		Method:    http.MethodGet,
 		Forwarder: forwarder,
 	})
@@ -87,16 +85,17 @@ func BenchmarkGatewayWithoutPlugins(b *testing.B) {
 }
 
 func BenchmarkGatewayWithPlugins(b *testing.B) {
-	gw := apigw.NewGateway()
-	gw.RegisterPlugin(apigw.NewPlugin("panic", 2, newPanicErrorPlugin))
-	gw.RegisterPlugin(apigw.NewPlugin("count", 1, newReqCountPlugin))
-
-	forwarder := lb.NewForwarder("benchmark", nil)
+	forwarder := lb.NewForwarder("benchmark")
 	forwarder.AddBackend(newFakeBackend("backend1"))
 	forwarder.AddBackend(newFakeBackend("backend2"))
-	gw.RegisterRoute(apigw.Route{
+
+	gw := apigw.NewGateway()
+	gw.AddHost("www.example.com")
+	gw.RegisterPlugin(apigw.NewPlugin("panic", 2, newPanicErrorPlugin))
+	gw.RegisterPlugin(apigw.NewPlugin("count", 1, newReqCountPlugin))
+	_, err := gw.RegisterRoute(apigw.Route{
 		Host:      "www.example.com",
-		Path:      "/v1/:path",
+		Path:      "/v1/test",
 		Method:    http.MethodGet,
 		Forwarder: forwarder,
 		Plugins: []apigw.RoutePlugin{
@@ -104,6 +103,9 @@ func BenchmarkGatewayWithPlugins(b *testing.B) {
 			{Name: "panic"},
 		},
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	req, _ := http.NewRequest(http.MethodGet, "http://www.example.com/v1/test", nil)
 	resp := httptest.NewRecorder()

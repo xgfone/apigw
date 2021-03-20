@@ -23,7 +23,7 @@ import (
 	"github.com/xgfone/apigw"
 	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/apigw/forward/lb/backend"
-	"github.com/xgfone/go-service/loadbalancer"
+	slb "github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/ship/v3"
 )
 
@@ -79,7 +79,7 @@ func ExampleGateway() {
 
 	// Create the global health checker of the backend endpoint, that's, upstream server.
 	// But you can also ignore it and do not to use it.
-	healthChecker := loadbalancer.NewHealthCheck()
+	healthChecker := slb.NewHealthCheck()
 	defer healthChecker.Stop()
 
 	// Initialize the gateway.
@@ -110,26 +110,18 @@ func ExampleGateway() {
 	})
 
 	// Create some backend endpoints, such as HTTP, GRPC, etc.
-	backend1, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8001/:path", nil)
-	backend2, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8002/:path", nil)
+	backend1, _ := backend.NewHTTPBackend("127.0.0.1:8001", nil)
+	backend2, _ := backend.NewHTTPBackend("127.0.0.1:8002", nil)
 
 	// Create the route.
-	fconfig := &lb.ForwarderConfig{
-		MaxTimeout: time.Minute,
-
-		// For the health check of backends, or not use it
-		HealthCheck: healthChecker,
-
-		// For session stick, or not use it
-		UpdateLoadBalancer: func(lb *loadbalancer.LoadBalancer) {
-			lb.Session = loadbalancer.NewMemorySessionManager()
-		},
-	}
 	route := apigw.NewRoute(host, "/v1/:path", http.MethodGet)
-	forwarder := lb.NewForwarder(route.Name(), fconfig)
-	forwarder.AddBackends(backend1, backend2) // Add the backends specific to the route
-	route.Forwarder = forwarder               // Set the backend forwarder for the route
-	route.Plugins = []apigw.RoutePlugin{      // Set the plugins which the route will use
+	forwarder := lb.NewForwarder(route.Name())
+	forwarder.HealthCheck = healthChecker                   // For the health check of backends, or not use it
+	forwarder.SetSessionTimeout(time.Second * 30)           // For session stick timeout, or not use
+	forwarder.SetSession(slb.NewMemorySession(time.Minute)) // For session stick manager, or not use
+	forwarder.AddBackends(backend1, backend2)               // Add the backends specific to the route
+	route.Forwarder = forwarder                             // Set the backend forwarder for the route
+	route.Plugins = []apigw.RoutePlugin{                    // Set the plugins which the route will use
 		{Name: "token", Config: "authentication_token"},
 		{Name: "log"},
 
@@ -150,12 +142,12 @@ func ExampleGateway() {
 	bgm := gw.GetBackendGroupManager(host)
 	bgm.AddBackendGroup(group)
 	// 1. Support to add the backend into the group before adding the group backend into the route forwarder.
-	backend3, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8003/:path", nil)
+	backend3, _ := backend.NewHTTPBackend("127.0.0.1:8003", nil)
 	group.AddBackend(backend3)
 	// 2. Add the backend group into the route forwarder.
 	forwarder.AddBackend(group)
 	// 3. Support to add the backend into the group after adding the group backend into the route forwarder.
-	backend4, _ := backend.NewHTTPBackend("", "http://127.0.0.1:8004/:path", nil)
+	backend4, _ := backend.NewHTTPBackend("127.0.0.1:8004", nil)
 	group.AddBackend(backend4)
 
 	// Start HTTP server.
