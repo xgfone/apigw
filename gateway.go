@@ -136,6 +136,26 @@ func (g *Gateway) SetName(name string) { g.router.Name = name }
 // Default: DefalutMaxBodySize
 func (g *Gateway) SetMaxBodySize(maxSize int) { g.router.MaxBodySize = maxSize }
 
+// SetDefaultHost sets the default host to the existed host.
+func (g *Gateway) SetDefaultHost(host string) (err error) {
+	if host == "" {
+		err = fmt.Errorf("host is empty")
+	} else if dhost, _ := g.router.GetDefaultRouter(); dhost == host {
+		return
+	} else if router := g.router.Router(host); router == nil {
+		err = fmt.Errorf("no the host '%s'", host)
+	} else {
+		g.router.SetDefaultRouter(host, router)
+	}
+	return
+}
+
+// GetDefaultHost returns the default host, which is "" by default.
+func (g *Gateway) GetDefaultHost() (host string) {
+	host, _ = g.router.GetDefaultRouter()
+	return
+}
+
 // ExecuteRoute executes the route, which will execute the middlewares,
 // find the route by the method and path from the underlying router,
 // then execute the route handler.
