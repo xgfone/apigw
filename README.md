@@ -124,7 +124,6 @@ func main() {
 
 	// Initialize the gateway.
 	gw := lb.NewGateway() // We use lb.Gateway instead of apigw.Gateway.
-	gw.Router().SetLogger(log.GetDefaultLogger())
 
 	// You can set the customized logger.
 	// gw.Router().SetLogger(logger)
