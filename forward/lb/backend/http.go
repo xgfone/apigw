@@ -37,11 +37,23 @@ func NewHTTPBackend(addr string, conf *HTTPBackendConfig) (lb.Backend, error) {
 }
 
 func handleHTTP(r lb.Request, c *http.Client, hr *http.Request) (_ *http.Response, e error) {
-	ctx := r.(lb.HTTPRequest).Context()
+	var start time.Time
+	lbhr, ok := r.(lb.HTTPRequest)
+	if !ok {
+		start = time.Now()
+	}
 
-	start := time.Now()
-	if resp, err := c.Do(hr); err != nil {
+	resp, err := c.Do(hr)
+
+	if !ok { // For HTTP Client
+		return resp, err
+	}
+
+	ctx := lbhr.Context()
+	if err != nil {
 		e = ship.ErrBadGateway.New(err)
+		ctx.Logger().Debugf("Forwarding HTTP Request '%s %s' -> '%s %s', cost '%s', err=%s",
+			ctx.Method(), ctx.RequestURI(), hr.Method, hr.URL.String(), time.Since(start), err)
 	} else {
 		defer resp.Body.Close()
 
@@ -51,10 +63,9 @@ func handleHTTP(r lb.Request, c *http.Client, hr *http.Request) (_ *http.Respons
 		}
 
 		e = ctx.Stream(resp.StatusCode, resp.Header.Get("Content-Type"), resp.Body)
+		ctx.Logger().Debugf("Forwarding HTTP Request '%s %s' -> '%s %s', cost '%s'",
+			ctx.Method(), ctx.RequestURI(), hr.Method, hr.URL.String(), time.Since(start))
 	}
-
-	ctx.Logger().Debugf("Forwarding HTTP Request '%s %s' -> '%s %s', cost '%s'",
-		ctx.Method(), ctx.RequestURI(), hr.Method, hr.URL.String(), time.Since(start))
 
 	return
 }
