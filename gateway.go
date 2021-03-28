@@ -28,44 +28,6 @@ import (
 
 var routerConfig = &echo.Config{RemoveTrailingSlash: true}
 
-var gateways map[string]*Gateway
-
-// RegisterGateway registers the gateway and returns true if successfully,
-// or returns false if the gateway has been registered.
-//
-// Notice: you can use this to manage all the global gateways.
-func RegisterGateway(g *Gateway) (ok bool) {
-	if _, ok = gateways[g.Name()]; !ok {
-		gateways[g.Name()] = g
-	}
-	return !ok
-}
-
-// UnregisterGateway unregisters the gateway by the name.
-func UnregisterGateway(name string) *Gateway {
-	g, ok := gateways[name]
-	if ok {
-		delete(gateways, name)
-	}
-	return g
-}
-
-// GetGateway returns the registered gateway by the name.
-//
-// Return nil if the gateway does not exist.
-func GetGateway(name string) *Gateway {
-	return gateways[name]
-}
-
-// GetGateways returns all the registered gateways.
-func GetGateways() []*Gateway {
-	gs := make([]*Gateway, 0, len(gateways))
-	for _, g := range gateways {
-		gs = append(gs, g)
-	}
-	return gs
-}
-
 // DefalutMaxBodySize is the default maximum size of the request body.
 var DefalutMaxBodySize = 8 << 20 // 8MB
 
