@@ -93,6 +93,9 @@ type Gateway struct {
 	mdws   []Middleware
 	router *ship.Ship
 
+	mlock sync.RWMutex
+	mdata map[string]interface{}
+
 	lock      sync.RWMutex
 	routes    map[string]map[string]Route // map[Host]map[RouteKey]Route
 	plugins   map[string]Plugin           // map[PluginName]Plugin
@@ -106,6 +109,7 @@ type Gateway struct {
 // NewGateway returns a new Gateway.
 func NewGateway() *Gateway {
 	g := &Gateway{
+		mdata:     make(map[string]interface{}),
 		routes:    make(map[string]map[string]Route, 128),
 		plugins:   make(map[string]Plugin, 8),
 		notfounds: make(map[string]Handler),
@@ -122,6 +126,65 @@ func NewGateway() *Gateway {
 		return router.NewLockRouter(echo.NewRouter(nil, nil))
 	})
 	return g
+}
+
+// SetMetadataForce is the same as SetMetadata, but still updates the key
+// if the key has existed.
+func (g *Gateway) SetMetadataForce(key string, value interface{}) {
+	if value == nil {
+		panic("Gateway.SetMetadata: value is nil")
+	}
+
+	g.mlock.Lock()
+	g.mdata[key] = value
+	g.mlock.Unlock()
+}
+
+// SetMetadata sets the metadata with the key and value.
+//
+// If the key has existed, do nothing. If the value is nil, panic.
+func (g *Gateway) SetMetadata(key string, value interface{}) (ok bool) {
+	if value == nil {
+		panic("Gateway.SetMetadata: value is nil")
+	}
+
+	g.mlock.Lock()
+	if _, exist := g.mdata[key]; !exist {
+		g.mdata[key] = value
+		ok = true
+	}
+	g.mlock.Unlock()
+	return
+}
+
+// DelMetadata deletes and returns the metadata by the key.
+//
+// If not exist, do nothing and return nil.
+func (g *Gateway) DelMetadata(key string) (value interface{}) {
+	g.mlock.Lock()
+	value = g.mdata[key]
+	delete(g.mdata, key)
+	g.mlock.Unlock()
+	return
+}
+
+// GetMetadata returns the metadata by the key. But return nil if not exist.
+func (g *Gateway) GetMetadata(key string) (value interface{}) {
+	g.mlock.RLock()
+	value = g.mdata[key]
+	g.mlock.RUnlock()
+	return
+}
+
+// GetMetadatas returns all the metadatas.
+func (g *Gateway) GetMetadatas() (ms map[string]interface{}) {
+	g.mlock.RLock()
+	ms = make(map[string]interface{}, len(g.mdata))
+	for key, value := range g.mdata {
+		ms[key] = value
+	}
+	g.mlock.RUnlock()
+	return
 }
 
 // Name returns the name of the gateway.
