@@ -26,6 +26,8 @@ import (
 	"github.com/xgfone/ship/v3/router/echo"
 )
 
+var routerConfig = &echo.Config{RemoveTrailingSlash: true}
+
 var gateways map[string]*Gateway
 
 // RegisterGateway registers the gateway and returns true if successfully,
@@ -123,7 +125,7 @@ func NewGateway() *Gateway {
 	g.router.MaxBodySize = DefalutMaxBodySize
 	g.router.RouteExecutor = g.ExecuteRoute
 	g.router.SetNewRouter(func() router.Router {
-		return router.NewLockRouter(echo.NewRouter(nil, nil))
+		return router.NewLockRouter(echo.NewRouterWithConfig(routerConfig))
 	})
 	return g
 }
