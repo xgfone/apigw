@@ -1,4 +1,4 @@
-github.com/xgfone/go-service v0.16.0 h1:TTmcv6944uers5qaexRKoZOzJOkcqctu+205V/6KNMo=
-github.com/xgfone/go-service v0.16.0/go.mod h1:3ZhHy2YEtdwGWt3ow+Ab1ix2kY0X4NkEEnCGWrU3l14=
-github.com/xgfone/ship/v3 v3.13.0 h1:QXQUpazFIeHwsEjp2v/Pgw6ygQJdIqCTFnAwECQQYX4=
-github.com/xgfone/ship/v3 v3.13.0/go.mod h1:9NhBy6CHaR91R/qCMaaNISnLo6gR08sIZMmbeIvDqBQ=
+github.com/xgfone/go-service v0.17.0 h1:Lcu/C08tPGw1aTv8MY4RQTjZXWGIvpWuiqOLDEVOyJQ=
+github.com/xgfone/go-service v0.17.0/go.mod h1:3ZhHy2YEtdwGWt3ow+Ab1ix2kY0X4NkEEnCGWrU3l14=
+github.com/xgfone/ship/v3 v3.14.0 h1:NV8TmITNINTXzio5JKlDMHsntshBbkFMr3yHABjxuPI=
+github.com/xgfone/ship/v3 v3.14.0/go.mod h1:9NhBy6CHaR91R/qCMaaNISnLo6gR08sIZMmbeIvDqBQ=
