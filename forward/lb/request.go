@@ -27,10 +27,8 @@ type HTTPRequest interface {
 	Request
 }
 
-// NewRequestWithXSessionId is equal to NewRequestWithHeader(c, "X-Session-Id").
-func NewRequestWithXSessionId(c *apigw.Context) HTTPRequest {
-	return simpleRequest{c}
-}
+// NewRequest is equal to NewRequestWithCookie(c, "sessionid").
+func NewRequest(c *apigw.Context) HTTPRequest { return simpleRequest{c} }
 
 type simpleRequest struct{ ctx *apigw.Context }
 
@@ -38,11 +36,10 @@ func (r simpleRequest) Context() *apigw.Context  { return r.ctx }
 func (r simpleRequest) Request() *http.Request   { return r.ctx.Request() }
 func (r simpleRequest) RemoteAddrString() string { return r.ctx.RemoteAddr() }
 func (r simpleRequest) SessionID() string {
-	vs := r.ctx.ReqHeader()["X-Session-Id"]
-	if len(vs) == 0 {
-		return ""
+	if cookie := r.ctx.Cookie("sessionid"); cookie != nil {
+		return cookie.Value
 	}
-	return vs[0]
+	return ""
 }
 
 // NewRequestWithSessionID returns a http request with the session id,
@@ -76,3 +73,24 @@ func (r headerRequest) SessionID() string        { return r.ctx.ReqHeader().Get(
 func (r headerRequest) RemoteAddrString() string { return r.ctx.RemoteAddr() }
 func (r headerRequest) Request() *http.Request   { return r.ctx.Request() }
 func (r headerRequest) Context() *apigw.Context  { return r.ctx }
+
+// NewRequestWithCookie returns a http request with the cookie,
+// which gets the session id from the given cookie name.
+func NewRequestWithCookie(c *apigw.Context, cookieName string) HTTPRequest {
+	return cookieRequest{ctx: c, cname: cookieName}
+}
+
+type cookieRequest struct {
+	ctx   *apigw.Context
+	cname string
+}
+
+func (r cookieRequest) RemoteAddrString() string { return r.ctx.RemoteAddr() }
+func (r cookieRequest) Request() *http.Request   { return r.ctx.Request() }
+func (r cookieRequest) Context() *apigw.Context  { return r.ctx }
+func (r cookieRequest) SessionID() string {
+	if cookie := r.ctx.Cookie(r.cname); cookie != nil {
+		return cookie.Value
+	}
+	return ""
+}
