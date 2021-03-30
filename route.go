@@ -27,10 +27,11 @@ import (
 
 // Predefine some errors.
 var (
-	ErrNoHost       = errors.New("no gateway host")
-	ErrNoRoute      = errors.New("no gateway route")
-	ErrEmptyPath    = errors.New("the empty route path")
-	ErrExistedRoute = errors.New("the existed route")
+	ErrNoHost         = errors.New("no gateway host")
+	ErrNoRoute        = errors.New("no gateway route")
+	ErrNoBackendGroup = errors.New("no backend group")
+	ErrExistedRoute   = errors.New("the existed route")
+	ErrEmptyPath      = errors.New("the empty route path")
 )
 
 // RoutePlugin is used to configure the route plugin.
