@@ -23,6 +23,9 @@ import (
 	"github.com/xgfone/ship/v4"
 )
 
+// HTTPBackendInfo is the alias of loadbalancer.HTTPEndpointInfo.
+type HTTPBackendInfo = loadbalancer.HTTPEndpointInfo
+
 // HTTPBackendConfig is used to configure the http backend.
 type HTTPBackendConfig = loadbalancer.HTTPEndpointConfig
 
