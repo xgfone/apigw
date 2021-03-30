@@ -42,6 +42,10 @@ type BackendUpdater interface {
 	//
 	// If the backend does not exist, do nothing.
 	DelBackend(Backend)
+
+	// DelBackendByString is convenient method, which is equal to
+	// DelBackend(Backend.String()).
+	DelBackendByString(backend string)
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -163,14 +167,18 @@ func (b *GroupBackend) AddBackend(backend Backend) {
 
 // DelBackend implements the interface BackendGroup.
 func (b *GroupBackend) DelBackend(backend Backend) {
-	addr := backend.String()
+	b.DelBackendByString(backend.String())
+}
+
+// DelBackendByString implements the interface BackendGroup.
+func (b *GroupBackend) DelBackendByString(backend string) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	if _, ok := b.backends[addr]; ok {
-		delete(b.backends, addr)
+	if _backend, ok := b.backends[backend]; ok {
+		delete(b.backends, backend)
 		for _, u := range b.updaters {
-			u.DelBackendFromGroup(backend)
+			u.DelBackendFromGroup(_backend)
 		}
 	}
 }
