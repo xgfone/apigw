@@ -10,15 +10,15 @@ Another simple, flexible, high performance api gateway library implemented by Go
 - Support the group of the upstream servers as the backend.
 - Support to customize the backend forwarder of the route.
 - Most of the functions are implemented by the plugin mode.
-- Too few core engine codes, ~1400 lines.
+- Too few core engine codes, ~1500 lines.
     ```shell
     $ cloc --exclude-dir=plugins --not-match-f=_test.go --include-lang=Go --quiet .
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code
     -------------------------------------------------------------------------------
-    Go                              17            323            530           1408
+    Go                              18            344            561           1494
     -------------------------------------------------------------------------------
-    SUM:                            17            323            530           1408
+    SUM:                            18            344            561           1494
     -------------------------------------------------------------------------------
     ```
 
@@ -229,5 +229,159 @@ func main() {
 	//
 	// no route: host=www.example.com, method=GET, path=/v2/test
 	//
+}
+```
+
+### Route Configuration Example
+
+```go
+////// The Route Configuration
+
+// HealthStatusCodeRange represents the range of the http status code
+// of the healthy backend, which is semi-closure, that's, [Begin, End).
+type HealthStatusCodeRange struct {
+	Begin int `json:"begin"`
+	End   int `json:"end"`
+}
+
+// HealthCheck is used to check the health of the endpoint.
+type HealthCheck struct {
+	Hostname    string                  `json:"hostname"`
+	Scheme      string                  `json:"scheme"`
+	Method      string                  `json:"method"`
+	Path        string                  `json:"path"`
+	StatusCodes []HealthStatusCodeRange `json:"statuscodes"`
+
+	Timeout      time.Duration `json:"timeout"`
+	Interval     time.Duration `json:"interval"`
+	FailRetryNum int           `json:"failretrynum"`
+}
+
+// Session is used to configure the session manager.
+type Session struct {
+	Timeout time.Duration `json:"timeout"`
+}
+
+// Forwarder is the forwarder to forward the request to one of the backends.
+type Forwarder struct {
+	Policy  string  `json:"policy"`
+	Session Session `json:"session"`
+
+	Upstream struct {
+		HealthCheck HealthCheck `json:"healthcheck"`
+		Endpoints   []struct {
+			HTTP struct {
+				Addr     string `json:"addr"`     // Required, Example: 192.168.1.10:80
+				Method   string `json:"method"`   // Optional, Example: GET
+				Scheme   string `json:"scheme"`   // Optional, Example: http
+				Hostname string `json:"hostname"` // Optional, Example: www.example.com
+				Path     string `json:"path"`     // Optional, Example: /v1/path/to
+			} `json:"http"`
+		} `json:"endpoints"`
+	} `json:"upstream"`
+}
+
+// Route is the route information.
+type Route struct {
+	Host   string `json:"host,omitempty"`
+	Path   string `json:"path"`
+	Method string `json:"method"`
+
+	Plugins []struct {
+		Name   string      `json:"name"`
+		Config interface{} `json:"config,omitempty"`
+	} `json:"plugins,omitempty"`
+
+	Forwarder Forwarder `json:"forwarder"`
+
+	// GZip     bool `json:"gzip"`
+	ClientIP    bool `json:"clientip"`
+	DefaultHost bool `json:"defaulthost"`
+}
+```
+
+===>>
+
+```go
+////// Configure the route
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/xgfone/apigw"
+	"github.com/xgfone/apigw/forward/lb"
+	"github.com/xgfone/apigw/forward/lb/backend"
+	"github.com/xgfone/go-service/loadbalancer"
+)
+
+var GlobalHealthChecker = loadbalancer.NewHealthCheck()
+
+func RegisterRoute(Route Route) {
+	// Add the host domain and set the default host domain.
+	lb.DefaultGateway.AddHost(Route.Host)
+	if Route.DefaultHost {
+		lb.DefaultGateway.SetDefaultHost(Route.Host)
+	}
+
+	// Configure the status codes of the health check.
+	statusCodes := Route.Forwarder.Upstream.HealthCheck.StatusCodes
+	codes := make([]loadbalancer.HTTPStatusCodeRange, len(statusCodes))
+	for i, c := range statusCodes {
+		codes[i] = loadbalancer.HTTPStatusCodeRange{Begin: c.Begin, End: c.End}
+	}
+
+	// Configure the health check.
+	healthChecker, _ := loadbalancer.HTTPEndpointHealthCheckerWithConfig(
+		&loadbalancer.HTTPEndpointHealthCheckerConfig{
+			Client: http.DefaultClient,
+			Codes:  codes,
+			Info: loadbalancer.HTTPEndpointInfo{
+				Scheme:   Route.Forwarder.Upstream.HealthCheck.Scheme,
+				Hostname: Route.Forwarder.Upstream.HealthCheck.Hostname,
+				Method:   Route.Forwarder.Upstream.HealthCheck.Method,
+				Path:     Route.Forwarder.Upstream.HealthCheck.Path,
+			},
+		})
+
+	// Configure the upstream endpoints.
+	backends := make([]lb.Backend, len(Route.Forwarder.Upstream.Endpoints))
+	for i, b := range Route.Forwarder.Upstream.Endpoints {
+		backends[i], _ = backend.NewHTTPBackend(b.HTTP.Addr, &backend.HTTPBackendConfig{
+			XForwardedFor: Route.ClientIP,
+			Checker:       healthChecker,
+			Info: backend.HTTPBackendInfo{
+				Method:   b.HTTP.Method,
+				Scheme:   b.HTTP.Scheme,
+				Hostname: b.HTTP.Hostname,
+				Path:     b.HTTP.Path,
+			},
+		})
+	}
+
+	// Configure the route and its plugins
+	route := apigw.NewRoute(Route.Host, Route.Path, Route.Method)
+	route.Plugins = make([]apigw.RoutePlugin, len(Route.Plugins))
+	for i, p := range Route.Plugins {
+		route.Plugins[i] = apigw.RoutePlugin{Name: p.Name, Config: p.Config}
+	}
+
+	// Configure the route forwarder.
+	forwarder := lb.NewForwarder(route.Name())
+	forwarder.HealthCheck = GlobalHealthChecker
+	forwarder.MaxTimeout = time.Minute
+	forwarder.SetSelector(loadbalancer.GetSelector(Route.Forwarder.Policy))
+	forwarder.SetSessionTimeout(Route.Forwarder.Session.Timeout)
+	forwarder.SetSession(loadbalancer.NewMemorySession(time.Minute))
+	forwarder.SetHealthCheckOption(lb.HealthCheckOption{
+		Timeout:  Route.Forwarder.Upstream.HealthCheck.Timeout,
+		Interval: Route.Forwarder.Upstream.HealthCheck.Interval,
+		RetryNum: Route.Forwarder.Upstream.HealthCheck.FailRetryNum,
+	})
+	forwarder.AddBackends(backends...)
+	route.Forwarder = forwarder
+
+	// Register the route.
+	lb.DefaultGateway.RegisterRoute(route)
 }
 ```
