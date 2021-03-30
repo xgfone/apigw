@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 
 	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/ship/v3"
+	"github.com/xgfone/ship/v4"
 )
 
 // NewQPSBackend returns a new QPS backend.

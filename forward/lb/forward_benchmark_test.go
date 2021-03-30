@@ -21,7 +21,7 @@ import (
 
 	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/apigw/forward/lb/backend"
-	"github.com/xgfone/ship/v3"
+	"github.com/xgfone/ship/v4"
 )
 
 func BenchmarkLBForwarder(b *testing.B) {

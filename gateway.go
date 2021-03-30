@@ -21,15 +21,15 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/xgfone/ship/v3"
-	"github.com/xgfone/ship/v3/router"
-	"github.com/xgfone/ship/v3/router/echo"
+	"github.com/xgfone/ship/v4"
+	"github.com/xgfone/ship/v4/router"
+	"github.com/xgfone/ship/v4/router/echo"
 )
 
 var routerConfig = &echo.Config{RemoveTrailingSlash: true}
 
-// DefalutMaxBodySize is the default maximum size of the request body.
-var DefalutMaxBodySize = 8 << 20 // 8MB
+// DefalutBodyMaxLen is the default maximum length of the request body.
+var DefalutBodyMaxLen = 8 << 20 // 8MB
 
 // DefaultGateway is the default global Gateway.
 var DefaultGateway = NewGateway()
@@ -68,26 +68,28 @@ type Gateway struct {
 	notfound  Handler
 	hasgmdw   uint32
 	hashmdw   uint32
+
+	bodyMaxLen int64
 }
 
 // NewGateway returns a new Gateway.
 func NewGateway() *Gateway {
 	g := &Gateway{
-		mdata:     make(map[string]interface{}),
-		routes:    make(map[string]map[string]Route, 128),
-		plugins:   make(map[string]Plugin, 8),
-		notfounds: make(map[string]Handler),
-		hostmdws:  make(map[string][]Middleware),
-		notfound:  ship.NotFoundHandler(),
+		mdata:      make(map[string]interface{}),
+		routes:     make(map[string]map[string]Route, 128),
+		plugins:    make(map[string]Plugin, 8),
+		notfounds:  make(map[string]Handler),
+		hostmdws:   make(map[string][]Middleware),
+		notfound:   ship.NotFoundHandler(),
+		bodyMaxLen: int64(DefalutBodyMaxLen),
 	}
 	g.router = ship.Default()
 	g.router.Lock = new(sync.RWMutex)
 	g.router.NotFound = g.NotFoundHandler
 	g.router.HandleError = g.handleError
-	g.router.MaxBodySize = DefalutMaxBodySize
-	g.router.RouteExecutor = g.ExecuteRoute
+	g.router.RouterExecutor = g.ExecuteRoute
 	g.router.SetNewRouter(func() router.Router {
-		return router.NewLockRouter(echo.NewRouterWithConfig(routerConfig))
+		return router.NewLockRouter(echo.NewRouter(routerConfig))
 	})
 	return g
 }
@@ -157,11 +159,13 @@ func (g *Gateway) Name() string { return g.router.Name }
 // SetName resets the name of the gateway. The default is empty.
 func (g *Gateway) SetName(name string) { g.router.Name = name }
 
-// SetMaxBodySize resets the maxinum size of the request body.
+// SetBodyMaxLen resets the maxinum length of the request body.
 // And 0 represents no limit.
 //
-// Default: DefalutMaxBodySize
-func (g *Gateway) SetMaxBodySize(maxSize int) { g.router.MaxBodySize = maxSize }
+// Default: DefalutBodyMaxLen
+func (g *Gateway) SetBodyMaxLen(maxLen int64) {
+	atomic.StoreInt64(&g.bodyMaxLen, maxLen)
+}
 
 // SetDefaultHost sets the default host to the existed host.
 func (g *Gateway) SetDefaultHost(host string) (err error) {
@@ -190,6 +194,10 @@ func (g *Gateway) GetDefaultHost() (host string) {
 // Notice: it is used to configure the field RouteExecutor of the underlying
 // router. In general, you don't have to reset it.
 func (g *Gateway) ExecuteRoute(ctx *Context) error {
+	if maxLen := atomic.LoadInt64(&g.bodyMaxLen); maxLen > 0 && maxLen < ctx.ContentLength() {
+		return ship.ErrStatusRequestEntityTooLarge
+	}
+
 	hasgmdw := atomic.LoadUint32(&g.hasgmdw) == 1
 	hashmdw := atomic.LoadUint32(&g.hashmdw) == 1
 	if hasgmdw || hashmdw {
@@ -233,13 +241,13 @@ func (g *Gateway) findAndExecuteRoute(ctx *Context) error {
 
 func (g *Gateway) handleRequest(ctx *Context) error {
 	// Forward the request to the backend server.
-	return ctx.RouteCtxData.(Route).Forwarder.Forward(ctx)
+	return ctx.RouteInfo.CtxData.(Route).Forwarder.Forward(ctx)
 }
 
 func (g *Gateway) handleError(ctx *Context, err error) {
 	if !ctx.IsResponded() {
 		switch e := err.(type) {
-		case ship.HTTPError:
+		case ship.HTTPServerError:
 			ctx.BlobText(e.Code, e.CT, e.Error())
 		default:
 			ctx.Text(http.StatusInternalServerError, err.Error())

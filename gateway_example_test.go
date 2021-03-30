@@ -24,7 +24,7 @@ import (
 	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/apigw/forward/lb/backend"
 	slb "github.com/xgfone/go-service/loadbalancer"
-	"github.com/xgfone/ship/v3"
+	"github.com/xgfone/ship/v4"
 )
 
 func gwMiddleware(name string) apigw.Middleware {

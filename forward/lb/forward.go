@@ -24,7 +24,7 @@ import (
 
 	"github.com/xgfone/apigw"
 	"github.com/xgfone/go-service/loadbalancer"
-	"github.com/xgfone/ship/v3"
+	"github.com/xgfone/ship/v4"
 )
 
 // ErrNoAvailableBackends represents that there is no available backends
