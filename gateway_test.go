@@ -54,9 +54,7 @@ func TestGateway_NotFound(t *testing.T) {
 
 	// 3. has domain host and routes
 	_, err := gw.RegisterRoute(apigw.Route{
-		Host:      `[a-zA-z0-9]+\.example\.com`,
-		Path:      "/",
-		Method:    http.MethodGet,
+		Matcher:   apigw.NewMatcher(`[a-zA-z0-9]+\.example\.com`, "/", http.MethodGet),
 		Forwarder: testForwarder{name: "test"},
 	})
 	if err != nil {
@@ -91,9 +89,7 @@ func TestGatewayMiddleware(t *testing.T) {
 	}
 
 	route := apigw.Route{
-		Host:      rehost,
-		Path:      "/",
-		Method:    http.MethodGet,
+		Matcher:   apigw.NewMatcher(rehost, "/", http.MethodGet),
 		Forwarder: testForwarder{name: "test"},
 	}
 	if _, err := gw.RegisterRoute(route); err != nil {
@@ -165,17 +161,13 @@ func TestGateway_SetDefaultHost(t *testing.T) {
 	}
 
 	_, err := g.RegisterRoute(apigw.Route{
-		Host:      "www.example.com",
-		Path:      "/",
-		Method:    http.MethodGet,
+		Matcher:   apigw.NewMatcher("www.example.com", "/", http.MethodGet),
 		Forwarder: testForwarder{"route"},
 	})
 	panicError(t, "register_route1", err)
 
 	_, err = g.RegisterRoute(apigw.Route{
-		Host:      "www1.example.com",
-		Path:      "/",
-		Method:    http.MethodGet,
+		Matcher:   apigw.NewMatcher("www1.example.com", "/", http.MethodGet),
 		Forwarder: testForwarder{"route1"},
 	})
 	panicError(t, "register_route2", err)

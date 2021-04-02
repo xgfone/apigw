@@ -51,37 +51,49 @@ type Forwarder interface {
 	io.Closer
 }
 
-// Route represents a route.
-type Route struct {
-	// Required
+// Matcher is used to match the host route.
+type Matcher struct {
 	Host   string `json:"host,omitempty" validate:"zero|hostname_rfc1123"`
 	Path   string `json:"path" validate:"required"`
 	Method string `json:"method" validate:"required"`
-
-	// Optional
-	Forwarder Forwarder     `json:"-"`
-	Plugins   []RoutePlugin `json:"plugins,omitempty"`
-
-	handler Handler
 }
 
-// NewRoute returns a new Route.
-func NewRoute(host, path, method string) Route {
-	return Route{Host: host, Path: path, Method: method}
+// Route represents a route.
+type Route struct {
+	Matcher   Matcher       `json:"matcher"`
+	Plugins   []RoutePlugin `json:"plugins,omitempty"`
+	Forwarder Forwarder     `json:"-"`
+	handler   Handler
+}
+
+func (m Matcher) routeKey() string {
+	return strings.Join([]string{m.Method, m.Path}, "@")
 }
 
 // Name returns the unified name of the route, which indicates a unique route.
-func (r Route) Name() string {
-	return strings.Join([]string{r.Host, r.Method, r.Path}, "@")
+func (m Matcher) Name() string {
+	return strings.Join([]string{m.Host, m.Method, m.Path}, "@")
 }
 
-func (r Route) routeKey() string {
-	return strings.Join([]string{r.Method, r.Path}, "@")
+// NewMatcher returns a new Matcher.
+func NewMatcher(host, path, method string) Matcher {
+	return Matcher{Host: host, Path: path, Method: method}
 }
+
+// NewRoute is equal to NewRouteWithMatcher(NewMatcher(host, path, method)).
+func NewRoute(host, path, method string) Route {
+	return Route{Matcher: NewMatcher(host, path, method)}
+}
+
+// NewRoute returns a new Route with the matcher.
+func NewRouteWithMatcher(m Matcher) Route { return Route{Matcher: m} }
+
+// Name returns the unified name of the route, which indicates a unique route.
+func (r Route) Name() string { return r.Matcher.Name() }
 
 // Equal reports whether the route is eqaul to other.
 func (r Route) Equal(other Route) bool {
-	if r.Host != other.Host || r.Path != other.Path || r.Method != other.Method {
+	if r.Matcher != other.Matcher {
 		return false
 	}
 
@@ -183,7 +195,7 @@ func (g *Gateway) GetRoute(host, path, method string) (route Route, err error) {
 		return Route{}, ErrEmptyPath
 	}
 
-	key := Route{Host: host, Path: path, Method: method}.routeKey()
+	key := Matcher{Host: host, Path: path, Method: method}.routeKey()
 	g.lock.RLock()
 	if routes, exist := g.routes[host]; !exist {
 		err = ErrNoHost
@@ -202,7 +214,7 @@ func (g *Gateway) GetRoute(host, path, method string) (route Route, err error) {
 func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 	if route.Forwarder == nil {
 		return Route{}, fmt.Errorf("forward handler must not be nil")
-	} else if route.Path == "" {
+	} else if route.Matcher.Path == "" {
 		return Route{}, ErrEmptyPath
 	}
 
@@ -228,12 +240,12 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 		route.handler = mw(route.handler)
 	}
 
-	key := route.routeKey()
+	key := route.Matcher.routeKey()
 
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	if routes, ok := g.routes[route.Host]; !ok {
+	if routes, ok := g.routes[route.Matcher.Host]; !ok {
 		return Route{}, ErrNoHost
 	} else if r, ok = routes[key]; ok {
 		err = ErrExistedRoute
@@ -254,23 +266,23 @@ func (g *Gateway) RegisterRoute(route Route) (r Route, err error) {
 //
 // Notice: It only needs the fields of host, path and method,
 // and the others are ignored.
-func (g *Gateway) UnregisterRoute(route Route) (r Route, err error) {
-	if route.Path == "" {
+func (g *Gateway) UnregisterRoute(m Matcher) (r Route, err error) {
+	if m.Path == "" {
 		return Route{}, ErrEmptyPath
 	}
 
-	key := route.routeKey()
+	key := m.routeKey()
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
-	routes, ok := g.routes[route.Host]
+	routes, ok := g.routes[m.Host]
 	if !ok {
 		return Route{}, ErrNoHost
 	} else if r, ok = routes[key]; !ok {
 		return Route{}, ErrNoRoute
 	}
 
-	if err = g.delRoute(route); err != nil {
+	if err = g.delRoute(m); err != nil {
 		return
 	}
 
@@ -282,20 +294,20 @@ func (g *Gateway) UnregisterRoute(route Route) (r Route, err error) {
 	return
 }
 
-func (g *Gateway) addRoute(route Route) error {
+func (g *Gateway) addRoute(r Route) error {
 	return g.router.AddRoute(ship.RouteInfo{
-		Host:    route.Host,
-		Path:    route.Path,
-		Method:  route.Method,
-		Handler: route.handler,
-		CtxData: route,
+		Host:    r.Matcher.Host,
+		Path:    r.Matcher.Path,
+		Method:  r.Matcher.Method,
+		Handler: r.handler,
+		CtxData: r,
 	})
 }
 
-func (g *Gateway) delRoute(route Route) error {
+func (g *Gateway) delRoute(m Matcher) error {
 	return g.router.DelRoute(ship.RouteInfo{
-		Host:   route.Host,
-		Path:   route.Path,
-		Method: route.Method,
+		Host:   m.Host,
+		Path:   m.Path,
+		Method: m.Method,
 	})
 }

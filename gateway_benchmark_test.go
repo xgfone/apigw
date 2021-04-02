@@ -68,9 +68,7 @@ func BenchmarkGatewayWithoutPlugins(b *testing.B) {
 	gw := apigw.NewGateway()
 	gw.AddHost("www.example.com")
 	gw.RegisterRoute(apigw.Route{
-		Host:      "www.example.com",
-		Path:      "/v1/test",
-		Method:    http.MethodGet,
+		Matcher:   apigw.NewMatcher("www.example.com", "/v1/test", http.MethodGet),
 		Forwarder: forwarder,
 	})
 
@@ -94,9 +92,7 @@ func BenchmarkGatewayWithPlugins(b *testing.B) {
 	gw.RegisterPlugin(apigw.NewPlugin("panic", 2, newPanicErrorPlugin))
 	gw.RegisterPlugin(apigw.NewPlugin("count", 1, newReqCountPlugin))
 	_, err := gw.RegisterRoute(apigw.Route{
-		Host:      "www.example.com",
-		Path:      "/v1/test",
-		Method:    http.MethodGet,
+		Matcher:   apigw.NewMatcher("www.example.com", "/v1/test", http.MethodGet),
 		Forwarder: forwarder,
 		Plugins: []apigw.RoutePlugin{
 			{Name: "count"},
