@@ -1,10 +1,10 @@
 # apigw [![Build Status](https://travis-ci.org/xgfone/apigw.svg?branch=master)](https://travis-ci.org/xgfone/apigw) [![GoDoc](https://godoc.org/github.com/xgfone/apigw?status.svg)](https://pkg.go.dev/github.com/xgfone/apigw) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/apigw/master/LICENSE)
 
-Another simple, flexible, high performance api gateway library implemented by Go(**`≥go1.15`**). For the binary program, see the another repository [apigateway](https://github.com/xgfone/apigateway).
+Another simple, flexible, high performance api gateway library implemented by Go(**`≥go1.15`**), And you can use it to customize yourself api gateway quickly.
 
 
 ### Features
-- Flexible, high performance and zero memory allocation for the core engine. See Benchmark, [Example](#example) and [apigateway](https://github.com/xgfone/apigateway).
+- Flexible, high performance and zero memory allocation for the core engine. See Benchmark, [Example](#example).
 - Support the virtual host, and different hosts has their own independent routes and NotFound.
 - Support the health check for the backend, that's upstream server.
 - Support the group of the upstream servers as the backend.
@@ -16,9 +16,9 @@ Another simple, flexible, high performance api gateway library implemented by Go
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code
     -------------------------------------------------------------------------------
-    Go                              18            344            561           1494
+    Go                              18            346            563           1502
     -------------------------------------------------------------------------------
-    SUM:                            18            344            561           1494
+    SUM:                            18            346            563           1502
     -------------------------------------------------------------------------------
     ```
 
@@ -283,9 +283,15 @@ type Forwarder struct {
 
 // Route is the route information.
 type Route struct {
-	Host   string `json:"host,omitempty"`
-	Path   string `json:"path"`
-	Method string `json:"method"`
+	Matcher struct {
+		Host   string `json:"host,omitempty"`
+		Path   string `json:"path"`
+		Method string `json:"method"`
+
+		// TODO: Implement these matchers below in future
+		Headers http.Header `json:"headers"`
+		Queries url.Values  `json:"queries"`
+	} `json:"matcher"`
 
 	Plugins []struct {
 		Name   string      `json:"name"`
@@ -300,13 +306,12 @@ type Route struct {
 }
 ```
 
-===>>
+**===>>**
 
 ```go
 ////// Configure the route
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/xgfone/apigw"
@@ -318,25 +323,28 @@ import (
 var GlobalHealthChecker = loadbalancer.NewHealthCheck()
 
 func RegisterRoute(Route Route) {
+	// We postulate that the gateway is lb.DefaultGateway.
+	// Of course, you maybe get the gateway from the gateway register by the host.
+	gateway := lb.DefaultGateway
+
 	// Add the host domain and set the default host domain.
-	lb.DefaultGateway.AddHost(Route.Host)
+	gateway.AddHost(Route.Matcher.Host)
 	if Route.DefaultHost {
-		lb.DefaultGateway.SetDefaultHost(Route.Host)
+		gateway.SetDefaultHost(Route.Matcher.Host)
 	}
 
 	// Configure the status codes of the health check.
 	statusCodes := Route.Forwarder.Upstream.HealthCheck.StatusCodes
-	codes := make([]loadbalancer.HTTPStatusCodeRange, len(statusCodes))
+	codes := make([]backend.HTTPStatusCodeRange, len(statusCodes))
 	for i, c := range statusCodes {
-		codes[i] = loadbalancer.HTTPStatusCodeRange{Begin: c.Begin, End: c.End}
+		codes[i] = backend.HTTPStatusCodeRange{Begin: c.Begin, End: c.End}
 	}
 
 	// Configure the health check.
 	healthChecker, _ := loadbalancer.HTTPEndpointHealthCheckerWithConfig(
 		&loadbalancer.HTTPEndpointHealthCheckerConfig{
-			Client: http.DefaultClient,
-			Codes:  codes,
-			Info: loadbalancer.HTTPEndpointInfo{
+			Codes: codes,
+			Info: backend.HTTPBackendInfo{
 				Scheme:   Route.Forwarder.Upstream.HealthCheck.Scheme,
 				Hostname: Route.Forwarder.Upstream.HealthCheck.Hostname,
 				Method:   Route.Forwarder.Upstream.HealthCheck.Method,
@@ -360,7 +368,8 @@ func RegisterRoute(Route Route) {
 	}
 
 	// Configure the route and its plugins
-	route := apigw.NewRoute(Route.Host, Route.Path, Route.Method)
+	matcher := apigw.NewMatcher(Route.Matcher.Host, Route.Matcher.Path, Route.Matcher.Method)
+	route := apigw.NewRouteWithMatcher(matcher)
 	route.Plugins = make([]apigw.RoutePlugin, len(Route.Plugins))
 	for i, p := range Route.Plugins {
 		route.Plugins[i] = apigw.RoutePlugin{Name: p.Name, Config: p.Config}
@@ -382,6 +391,6 @@ func RegisterRoute(Route Route) {
 	route.Forwarder = forwarder
 
 	// Register the route.
-	lb.DefaultGateway.RegisterRoute(route)
+	gateway.RegisterRoute(route)
 }
 ```
