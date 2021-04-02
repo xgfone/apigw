@@ -23,10 +23,14 @@ import (
 	"github.com/xgfone/ship/v4"
 )
 
+// HTTPStatusCodeRange is the alias of loadbalancer.HTTPStatusCodeRange.
+type HTTPStatusCodeRange = loadbalancer.HTTPStatusCodeRange
+
 // HTTPBackendInfo is the alias of loadbalancer.HTTPEndpointInfo.
 type HTTPBackendInfo = loadbalancer.HTTPEndpointInfo
 
-// HTTPBackendConfig is used to configure the http backend.
+// HTTPBackendConfig is used to configure the http backend,
+// which is the alias of loadbalancer.HTTPEndpointConfig.
 type HTTPBackendConfig = loadbalancer.HTTPEndpointConfig
 
 // NewHTTPBackend returns a new HTTP backend.
