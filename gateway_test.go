@@ -178,11 +178,11 @@ func TestGateway_SetDefaultHost(t *testing.T) {
 		for host, router := range routers {
 			switch host {
 			case "www.example.com":
-				if rs := router.Routes(); len(rs) != 1 {
+				if rs := router.Routes(nil); len(rs) != 1 {
 					t.Errorf("wrong routes: %v", rs)
 				}
 			case "www1.example.com":
-				if rs := router.Routes(); len(rs) != 1 {
+				if rs := router.Routes(nil); len(rs) != 1 {
 					t.Errorf("wrong routes: %v", rs)
 				}
 			default:
