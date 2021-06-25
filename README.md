@@ -240,7 +240,7 @@ type HealthStatusCodeRange struct {
 // HealthCheck is used to check the health of the endpoint.
 type HealthCheck struct {
 	Hostname    string                  `json:"hostname"`
-    Method      string                  `json:"method"`
+	Method      string                  `json:"method"`
 	Scheme      string                  `json:"scheme"`
 	Path        string                  `json:"path"`
 	StatusCodes []HealthStatusCodeRange `json:"statuscodes"`
