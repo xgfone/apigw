@@ -19,19 +19,17 @@ import (
 	"time"
 
 	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/go-service/loadbalancer"
+	"github.com/xgfone/go-loadbalancer"
 	"github.com/xgfone/ship/v4"
 )
 
-// HTTPStatusCodeRange is the alias of loadbalancer.HTTPStatusCodeRange.
-type HTTPStatusCodeRange = loadbalancer.HTTPStatusCodeRange
-
-// HTTPBackendInfo is the alias of loadbalancer.HTTPEndpointInfo.
-type HTTPBackendInfo = loadbalancer.HTTPEndpointInfo
-
-// HTTPBackendConfig is used to configure the http backend,
-// which is the alias of loadbalancer.HTTPEndpointConfig.
-type HTTPBackendConfig = loadbalancer.HTTPEndpointConfig
+// Predefine some type aliases.
+type (
+	HTTPBackendInfo     = loadbalancer.HTTPEndpointInfo
+	HTTPBackendConfig   = loadbalancer.HTTPEndpointConfig
+	HTTPBackendChecker  = loadbalancer.HTTPEndpointHealthChecker
+	HTTPStatusCodeRange = loadbalancer.HTTPStatusCodeRange
+)
 
 // NewHTTPBackend returns a new HTTP backend.
 func NewHTTPBackend(addr string, conf *HTTPBackendConfig) (lb.Backend, error) {
@@ -43,7 +41,8 @@ func NewHTTPBackend(addr string, conf *HTTPBackendConfig) (lb.Backend, error) {
 	return loadbalancer.NewHTTPEndpoint(addr, conf)
 }
 
-func handleHTTP(r lb.Request, c *http.Client, hr *http.Request) (_ *http.Response, e error) {
+func handleHTTP(svcid string, c *http.Client, hr *http.Request, r lb.Request) (
+	_ *http.Response, e error) {
 	var start time.Time
 	lbhr, ok := r.(lb.HTTPRequest)
 	if !ok {
@@ -67,6 +66,10 @@ func handleHTTP(r lb.Request, c *http.Client, hr *http.Request) (_ *http.Respons
 		respHeader := ctx.RespHeader()
 		for k, vs := range resp.Header {
 			respHeader[k] = vs
+		}
+
+		if svcid != "" {
+			respHeader.Set("X-Server-Id", svcid)
 		}
 
 		e = ctx.Stream(resp.StatusCode, resp.Header.Get("Content-Type"), resp.Body)

@@ -12,22 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package lb_test
+package lb
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/xgfone/apigw/forward/lb"
-	"github.com/xgfone/apigw/forward/lb/backend"
 	"github.com/xgfone/ship/v4"
 )
 
 func BenchmarkLBForwarder(b *testing.B) {
-	forwarder := lb.NewForwarder("")
-	forwarder.AddBackend(backend.NewNoopBackend("server1"))
-	forwarder.AddBackend(backend.NewNoopBackend("server2"))
+	f := NewForwarder("benchmark")
+	f.AddBackendWithChecker(newNoopBackend("server1"), nil, BackendCheckerDurationZero)
+	f.AddBackendWithChecker(newNoopBackend("server2"), nil, BackendCheckerDurationZero)
 
 	req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1", nil)
 	ctx := ship.NewContext(0, 0)
@@ -36,6 +34,6 @@ func BenchmarkLBForwarder(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		forwarder.Forward(ctx)
+		f.Forward(ctx)
 	}
 }

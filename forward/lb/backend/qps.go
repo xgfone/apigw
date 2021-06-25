@@ -29,14 +29,13 @@ func NewQPSBackend(qps int, next lb.Backend) lb.Backend {
 	if qps < 0 {
 		qps = 0
 	}
-
 	return &qpsBackend{Backend: next, maxQPS: int64(qps)}
 }
 
 type qpsBackend struct {
-	lb.Backend
 	maxQPS int64
 	curQPS int64
+	lb.Backend
 }
 
 func (b *qpsBackend) UnwrapEndpoint() lb.Backend { return b.Backend }
@@ -47,14 +46,10 @@ func (b *qpsBackend) MetaData() map[string]interface{} {
 }
 
 func (b *qpsBackend) RoundTrip(c context.Context, r lb.Request) (interface{}, error) {
-	if b.maxQPS == 0 {
-		return b.Backend.RoundTrip(c, r)
-	}
-
 	qps := atomic.AddInt64(&b.curQPS, 1)
 	defer atomic.AddInt64(&b.curQPS, -1)
 
-	if qps > b.maxQPS {
+	if b.maxQPS > 0 && qps > b.maxQPS {
 		return nil, ship.ErrTooManyRequests
 	}
 	return b.Backend.RoundTrip(c, r)

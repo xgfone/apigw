@@ -25,14 +25,14 @@ var builders = make(map[string]Builder, 4)
 
 // BuilderContext is the context of the builder.
 type BuilderContext struct {
-	apigw.Route
 	MetaData map[string]interface{}
+	apigw.Matcher
 }
 
 // Builder is used to build the backend.
 type Builder interface {
-	Type() string
 	New(BuilderContext) (lb.Backend, error)
+	Type() string
 }
 
 // RegisterBuilder registers the backend builder.
@@ -69,11 +69,9 @@ func NewBuilder(_type string, new func(BuilderContext) (lb.Backend, error)) Buil
 }
 
 type builder struct {
-	typ string
 	new func(BuilderContext) (lb.Backend, error)
+	typ string
 }
 
-func (b builder) Type() string { return b.typ }
-func (b builder) New(c BuilderContext) (lb.Backend, error) {
-	return b.new(c)
-}
+func (b builder) Type() string                             { return b.typ }
+func (b builder) New(c BuilderContext) (lb.Backend, error) { return b.new(c) }

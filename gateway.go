@@ -97,8 +97,10 @@ func NewGateway() *Gateway {
 // SetMetadataForce is the same as SetMetadata, but still updates the key
 // if the key has existed.
 func (g *Gateway) SetMetadataForce(key string, value interface{}) {
-	if value == nil {
-		panic("Gateway.SetMetadata: value is nil")
+	if key == "" {
+		panic("Gateway.SetMetadataForce: key is empty")
+	} else if value == nil {
+		panic("Gateway.SetMetadataForce: value is nil")
 	}
 
 	g.mlock.Lock()
@@ -110,7 +112,9 @@ func (g *Gateway) SetMetadataForce(key string, value interface{}) {
 //
 // If the key has existed, do nothing. If the value is nil, panic.
 func (g *Gateway) SetMetadata(key string, value interface{}) (ok bool) {
-	if value == nil {
+	if key == "" {
+		panic("Gateway.SetMetadata: key is empty")
+	} else if value == nil {
 		panic("Gateway.SetMetadata: value is nil")
 	}
 
@@ -127,6 +131,10 @@ func (g *Gateway) SetMetadata(key string, value interface{}) (ok bool) {
 //
 // If not exist, do nothing and return nil.
 func (g *Gateway) DelMetadata(key string) (value interface{}) {
+	if key == "" {
+		panic("Gateway.DelMetadata: key is empty")
+	}
+
 	g.mlock.Lock()
 	value = g.mdata[key]
 	delete(g.mdata, key)
@@ -136,6 +144,10 @@ func (g *Gateway) DelMetadata(key string) (value interface{}) {
 
 // GetMetadata returns the metadata by the key. But return nil if not exist.
 func (g *Gateway) GetMetadata(key string) (value interface{}) {
+	if key == "" {
+		panic("Gateway.GetMetadata: key is empty")
+	}
+
 	g.mlock.RLock()
 	value = g.mdata[key]
 	g.mlock.RUnlock()
@@ -193,32 +205,32 @@ func (g *Gateway) GetDefaultHost() (host string) {
 //
 // Notice: it is used to configure the field RouteExecutor of the underlying
 // router. In general, you don't have to reset it.
-func (g *Gateway) ExecuteRoute(ctx *Context) error {
-	if maxLen := atomic.LoadInt64(&g.bodyMaxLen); maxLen > 0 && maxLen < ctx.ContentLength() {
+func (g *Gateway) ExecuteRoute(c *Context) error {
+	if m := atomic.LoadInt64(&g.bodyMaxLen); m > 0 && m < c.ContentLength() {
 		return ship.ErrStatusRequestEntityTooLarge
 	}
 
 	hasgmdw := atomic.LoadUint32(&g.hasgmdw) == 1
 	hashmdw := atomic.LoadUint32(&g.hashmdw) == 1
 	if hasgmdw || hashmdw {
-		return g.executeRouteWithMiddleware(ctx, hasgmdw, hashmdw)
+		return g.executeRouteWithMiddleware(c, hasgmdw, hashmdw)
 	}
-	return g.findAndExecuteRoute(ctx)
+	return g.findAndExecuteRoute(c)
 }
 
-func (g *Gateway) executeRouteWithMiddleware(ctx *Context, hasgmdw, hashmdw bool) error {
+func (g *Gateway) executeRouteWithMiddleware(c *Context, hasgmdw, hashmdw bool) error {
 	handler := g.findAndExecuteRoute
 
 	// For the host middleware
 	if hashmdw {
 		var mdws []Middleware
 		g.lock.RLock()
-		mdws = g.hostmdws[ctx.RouteInfo.Host]
+		mdws = g.hostmdws[c.RouteInfo.Host]
 		for i := len(mdws) - 1; i >= 0; i-- {
 			handler = mdws[i](handler)
 		}
 
-		mdws = g.hostmdws[ctx.Host()]
+		mdws = g.hostmdws[c.Host()]
 		for i := len(mdws) - 1; i >= 0; i-- {
 			handler = mdws[i](handler)
 		}
@@ -232,25 +244,23 @@ func (g *Gateway) executeRouteWithMiddleware(ctx *Context, hasgmdw, hashmdw bool
 		}
 	}
 
-	return handler(ctx)
+	return handler(c)
 }
 
-func (g *Gateway) findAndExecuteRoute(ctx *Context) error {
-	return ctx.Execute()
-}
+func (g *Gateway) findAndExecuteRoute(c *Context) error { return c.Execute() }
 
-func (g *Gateway) handleRequest(ctx *Context) error {
+func (g *Gateway) handleRequest(c *Context) error {
 	// Forward the request to the backend server.
-	return ctx.RouteInfo.CtxData.(Route).Forwarder.Forward(ctx)
+	return c.RouteInfo.CtxData.(Route).Forwarder.Forward(c)
 }
 
-func (g *Gateway) handleError(ctx *Context, err error) {
-	if !ctx.IsResponded() {
+func (g *Gateway) handleError(c *Context, err error) {
+	if !c.IsResponded() {
 		switch e := err.(type) {
 		case ship.HTTPServerError:
-			ctx.BlobText(e.Code, e.CT, e.Error())
+			c.BlobText(e.Code, e.CT, e.Error())
 		default:
-			ctx.Text(http.StatusInternalServerError, err.Error())
+			c.Text(http.StatusInternalServerError, err.Error())
 		}
 	}
 }
@@ -259,16 +269,16 @@ func (g *Gateway) handleError(ctx *Context, err error) {
 //
 // Notice: it is used to configure the field NotFound of the underlying router.
 // In general, you don't have to reset it.
-func (g *Gateway) NotFoundHandler(ctx *Context) error {
+func (g *Gateway) NotFoundHandler(c *Context) error {
 	g.lock.RLock()
 	handler := g.notfound
-	if h, ok := g.notfounds[ctx.Host()]; ok {
+	if h, ok := g.notfounds[c.Host()]; ok {
 		handler = h
-	} else if h, ok = g.notfounds[ctx.RouteInfo.Host]; ok {
+	} else if h, ok = g.notfounds[c.RouteInfo.Host]; ok {
 		handler = h
 	}
 	g.lock.RUnlock()
-	return handler(ctx)
+	return handler(c)
 }
 
 // SetHostNotFound sets the NotFound handler of the host router.

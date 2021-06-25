@@ -12,73 +12,120 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package lb_test
+package lb
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/xgfone/apigw/forward/lb"
-	slb "github.com/xgfone/go-service/loadbalancer"
+	lb "github.com/xgfone/go-loadbalancer"
 )
 
-type noopBackend struct {
-	name    string
-	healthy bool
+type noopBackend struct{ name string }
+
+func newNoopBackend(name string) noopBackend           { return noopBackend{name} }
+func (b noopBackend) ID() string                       { return b.name }
+func (b noopBackend) Type() string                     { return "noop" }
+func (b noopBackend) String() string                   { return b.name }
+func (b noopBackend) State() (s BackendState)          { return }
+func (b noopBackend) MetaData() map[string]interface{} { return nil }
+func (b noopBackend) RoundTrip(context.Context, Request) (interface{}, error) {
+	return nil, nil
 }
 
-func newNoopBackend(name string, healthy bool) noopBackend {
-	return noopBackend{name: name, healthy: healthy}
+func newBackendChecker() BackendChecker {
+	return BackendCheckerFunc(func(context.Context) error { return nil })
 }
 
-func (b noopBackend) Type() string                                                { return "noop" }
-func (b noopBackend) String() string                                              { return b.name }
-func (b noopBackend) State() (s slb.EndpointState)                                { return }
-func (b noopBackend) MetaData() map[string]interface{}                            { return nil }
-func (b noopBackend) IsHealthy(context.Context) bool                              { return b.healthy }
-func (b noopBackend) RoundTrip(context.Context, slb.Request) (interface{}, error) { return nil, nil }
+func TestForwarder(t *testing.T) {
+	checker := newBackendChecker()
+	backend1 := newNoopBackend("backend1")
+	backend2 := newNoopBackend("backend2")
+	backend3 := newNoopBackend("backend3")
+	backend4 := newNoopBackend("backend4")
 
-func TestForwarder_Backends(t *testing.T) {
-	hc := slb.NewHealthCheck()
-	defer hc.Stop()
+	g := NewGroupBackend("group")
+	g.AddBackendWithChecker(backend1, nil, BackendCheckerDurationZero)
+	g.AddBackendWithChecker(backend2, checker, BackendCheckerDurationZero)
+	defer g.Close()
 
-	f := lb.NewForwarder("")
-	f.HealthCheck = hc
-	backend1 := newNoopBackend("backend1", false)
-	backend2 := newNoopBackend("backend2", false)
-	backend3 := newNoopBackend("backend3", false)
+	f := NewForwarder("default")
+	f.AddBackendWithChecker(g, nil, BackendCheckerDurationZero)
+	f.AddBackendWithChecker(backend3, nil, BackendCheckerDurationZero)
+	f.AddBackendWithChecker(backend4, checker, BackendCheckerDurationZero)
+	defer f.Close()
 
-	hc.SetDefaultOption(slb.HealthCheckOption{Interval: 10 * time.Millisecond})
-	hc.Subscribe("", f)
-	f.AddBackend(backend1)
-	f.AddBackend(backend2)
-	f.AddBackend(backend3)
 	time.Sleep(time.Millisecond * 200)
-	for _, b := range f.GetBackends() {
-		if healthy := b.IsHealthy(context.Background()); healthy {
-			t.Errorf("Backend %s: expect '%v', but got '%v'", b.String(), false, true)
+	backends := f.GetBackends()
+	if len(backends) != 3 {
+		ids := make([]string, len(backends))
+		for i, b := range backends {
+			ids[i] = b.ID()
+		}
+		t.Errorf("incomplete backends: %v", ids)
+	} else {
+		for _, b := range f.GetBackends() {
+			switch id := b.Backend.ID(); id {
+			case "group", "backend3", "backend4":
+			default:
+				t.Errorf("unknown backend '%s'", id)
+			}
 		}
 	}
 
-	f.DelBackend(backend1)
-	f.DelBackend(backend2)
-	f.DelBackend(backend3)
-	time.Sleep(time.Millisecond * 100)
-	if backends := f.GetBackends(); len(backends) != 0 {
-		t.Error(backends)
+	var eps lb.Endpoints
+	f.LoadBalancer.Inspect(func(_eps lb.Endpoints) {
+		for _, ep := range _eps {
+			fmt.Printf("+++++ %s: %+v\n", ep.ID(), ep)
+		}
+		eps = append(eps, _eps...)
+	})
+	if len(eps) != 4 {
+		t.Errorf("incomplete endpoints: %v", eps)
+	} else {
+		for _, ep := range eps {
+			switch id := ep.ID(); id {
+			case "backend1", "backend2", "backend3", "backend4":
+			default:
+				t.Errorf("unknown endpoints '%s'", id)
+			}
+		}
 	}
 
-	backend1.healthy = true
-	backend2.healthy = true
-	backend3.healthy = true
-	f.AddBackend(backend1)
-	f.AddBackend(backend2)
-	f.AddBackend(backend3)
+	f.DelBackendByID(backend3.ID())
+	g.DelBackendByID(backend1.ID())
 	time.Sleep(time.Millisecond * 200)
-	for _, b := range f.GetBackends() {
-		if healthy := b.IsHealthy(context.Background()); !healthy {
-			t.Errorf("Backend %s: expect '%v', but got '%v'", b.String(), true, false)
+
+	backends = f.GetBackends()
+	if len(backends) != 2 {
+		ids := make([]string, len(backends))
+		for i, b := range backends {
+			ids[i] = b.ID()
+		}
+		t.Errorf("incomplete backends: %v", ids)
+	} else {
+		for _, b := range f.GetBackends() {
+			switch id := b.Backend.ID(); id {
+			case "group", "backend4":
+			default:
+				t.Errorf("unknown backend '%s'", id)
+			}
+		}
+	}
+
+	eps = lb.Endpoints{}
+	f.LoadBalancer.Inspect(func(_eps lb.Endpoints) { eps = append(eps, _eps...) })
+	if len(eps) != 2 {
+		t.Errorf("incomplete endpoints: %v", eps)
+	} else {
+		for _, ep := range eps {
+			switch id := ep.ID(); id {
+			case "backend2", "backend4":
+			default:
+				t.Errorf("unknown endpoints '%s'", id)
+			}
 		}
 	}
 }

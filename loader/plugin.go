@@ -22,13 +22,13 @@ import (
 
 // PluginLoader is used to load the plugin.
 type PluginLoader interface {
-	Name() string
 	Plugin() (apigw.Plugin, error)
+	Name() string
 }
 
 type pluginLoader struct {
-	name   string
 	plugin func() (apigw.Plugin, error)
+	name   string
 }
 
 // NewPluginLoader returns a new plugin loader.

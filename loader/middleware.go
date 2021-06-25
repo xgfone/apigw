@@ -22,13 +22,13 @@ import (
 
 // MiddlewareLoader is used to load the middleware.
 type MiddlewareLoader interface {
-	Name() string
 	Middleware() (apigw.Middleware, error)
+	Name() string
 }
 
 type middlewareLoader struct {
-	name string
 	mw   func() (apigw.Middleware, error)
+	name string
 }
 
 // NewMiddlewareLoader returns a new middleware loader.

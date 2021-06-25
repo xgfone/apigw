@@ -34,17 +34,23 @@ func NewBackendGroupManager(name string) *BackendGroupManager {
 // Name returns the name of the backend group manager.
 func (m *BackendGroupManager) Name() string { return m.name }
 
-// AddOrNewBackendGroup is equal to m.AddBackendGroup(NewGroupBackend(name, config)).
-func (m *BackendGroupManager) AddOrNewBackendGroup(name string, config *GroupBackendConfig) (bg BackendGroup) {
+// AddOrNewBackendGroup is the same as m.AddBackendGroup(NewGroupBackend(name)),
+// but only new the backend group when it does not exist.
+func (m *BackendGroupManager) AddOrNewBackendGroup(name string) BackendGroup {
+	if name == "" {
+		panic("BackendGroupManager: the backend group name is empty")
+	}
+
+	var group BackendGroup
 	m.lock.Lock()
 	if g, ok := m.groups[name]; ok {
-		bg = g
+		group = g
 	} else {
-		bg = NewGroupBackend(name, config)
-		m.groups[name] = bg
+		group = NewGroupBackend(name)
+		m.groups[name] = group
 	}
 	m.lock.Unlock()
-	return bg
+	return group
 }
 
 // AddBackendGroup adds the backend group. If the backend group has been added,
@@ -70,15 +76,14 @@ func (m *BackendGroupManager) DelBackendGroupByName(name string) BackendGroup {
 	g, ok := m.groups[name]
 	if ok {
 		delete(m.groups, name)
-		g.Close()
 	}
 	return g
 }
 
-// GetBackendGroup returns the backend group by the name.
+// GetBackendGroupByname returns the backend group by the name.
 //
 // If the backend group does not exist, return nil.
-func (m *BackendGroupManager) GetBackendGroup(name string) BackendGroup {
+func (m *BackendGroupManager) GetBackendGroupByname(name string) BackendGroup {
 	m.lock.RLock()
 	g := m.groups[name]
 	m.lock.RUnlock()
@@ -97,11 +102,11 @@ func (m *BackendGroupManager) GetBackendGroups() (bgs []BackendGroup) {
 }
 
 // GetBackendGroupsByUpdaterName returns the list of the backend groups
-// which add the updater.
+// which the updater is added into.
 func (m *BackendGroupManager) GetBackendGroupsByUpdaterName(name string) (bgs []BackendGroup) {
 	m.lock.RLock()
 	for _, g := range m.groups {
-		if g.GetUpdater(name) != nil {
+		if g.GetUpdaterByName(name) != nil {
 			bgs = append(bgs, g)
 		}
 	}
@@ -109,22 +114,25 @@ func (m *BackendGroupManager) GetBackendGroupsByUpdaterName(name string) (bgs []
 	return
 }
 
-// DelUpdater deletes the backend group updater from all the backend group.
-func (m *BackendGroupManager) DelUpdater(u BackendGroupUpdater) {
+// DelUpdaterByName deletes the backend updater by the updater name
+// from all the backend group.
+func (m *BackendGroupManager) DelUpdaterByName(backendUpdaterName string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	for _, g := range m.groups {
-		g.DelUpdater(u)
+		g.DelUpdaterByName(backendUpdaterName)
 	}
 }
 
-// Close implements the interface io.Closer and releases all the resources.
+// Close closes all the backend groups.
 func (m *BackendGroupManager) Close() error {
 	m.lock.Lock()
-	defer m.lock.Unlock()
-	for _, g := range m.groups {
+	groups := m.groups
+	m.groups = nil
+	m.lock.Unlock()
+
+	for _, g := range groups {
 		g.Close()
 	}
-	m.groups = nil
 	return nil
 }

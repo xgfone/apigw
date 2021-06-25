@@ -16,6 +16,9 @@ package apigw
 
 import "sync"
 
+// DefaultGatewayManager is the default global gateway manager.
+var DefaultGatewayManager = NewGatewayManager()
+
 // GatewayManager is used to manage a group of gateways.
 type GatewayManager struct {
 	gateways sync.Map

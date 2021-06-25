@@ -16,7 +16,6 @@ package lb
 
 import (
 	"sync"
-	"time"
 
 	"github.com/xgfone/apigw"
 )
@@ -28,26 +27,50 @@ var DefaultGateway = NewGateway()
 type Gateway struct {
 	*apigw.Gateway
 
-	bgms  map[string]*BackendGroupManager
-	mlock sync.RWMutex
+	lock sync.RWMutex
+	bgms map[string]*BackendGroupManager
 }
 
 // NewGateway returns the new Gateway.
 func NewGateway() *Gateway {
-	g := &Gateway{Gateway: apigw.NewGateway(), bgms: make(map[string]*BackendGroupManager)}
+	g := &Gateway{
+		Gateway: apigw.NewGateway(),
+		bgms:    make(map[string]*BackendGroupManager),
+	}
 	g.Gateway.Context = g
 	return g
+}
+
+// GetBackendGroupManager returns the backend group manager by the host as the name.
+//
+// If the backend group manager does not exist, return nil.
+func (g *Gateway) GetBackendGroupManager(host string) *BackendGroupManager {
+	g.lock.RLock()
+	m := g.bgms[host]
+	g.lock.RUnlock()
+	return m
+}
+
+// GetBackendGroupManagers returns all the backend group manager.
+func (g *Gateway) GetBackendGroupManagers() (ms []*BackendGroupManager) {
+	g.lock.RLock()
+	ms = make([]*BackendGroupManager, 0, len(g.bgms))
+	for _, m := range g.bgms {
+		ms = append(ms, m)
+	}
+	g.lock.RUnlock()
+	return
 }
 
 // AddHost replaces the method g.Gateway.AddHost to also add the backend group
 // manager.
 func (g *Gateway) AddHost(host string) (err error) {
 	if err = g.Gateway.AddHost(host); err == nil {
-		g.mlock.Lock()
+		g.lock.Lock()
 		if _, ok := g.bgms[host]; !ok {
 			g.bgms[host] = NewBackendGroupManager(host)
 		}
-		g.mlock.Unlock()
+		g.lock.Unlock()
 	}
 	return
 }
@@ -56,8 +79,8 @@ func (g *Gateway) AddHost(host string) (err error) {
 // manager.
 func (g *Gateway) DelHost(host string) (err error) {
 	if err = g.Gateway.DelHost(host); err == nil {
-		g.mlock.Lock()
-		defer g.mlock.Unlock()
+		g.lock.Lock()
+		defer g.lock.Unlock()
 		if m, ok := g.bgms[host]; ok {
 			delete(g.bgms, host)
 			m.Close()
@@ -75,6 +98,9 @@ func (g *Gateway) GetRouteForwarder(host, path, method string) (*Forwarder, erro
 	return route.Forwarder.(*Forwarder), nil
 }
 
+/////////////////////////////////////////////////////////////////////////////
+
+/*
 // GetRouteSessionTimeout is a convenient function to get the session timeout
 // of the route.
 func (g *Gateway) GetRouteSessionTimeout(host, path, method string) (time.Duration, error) {
@@ -110,7 +136,7 @@ func (g *Gateway) GetRouteSessionManager(host, path, method string) (Session, er
 func (g *Gateway) SetRouteSessionManager(host, path, method string, s Session) error {
 	if forwarder, err := g.GetRouteForwarder(host, path, method); err != nil {
 		return err
-	} else if _type := s.Type(); forwarder.GetSession().Type() == _type {
+	} else if forwarder.GetSession().URL() == s.URL() {
 		return nil
 	} else if old := forwarder.SetSession(s); old != nil {
 		old.Close()
@@ -148,22 +174,22 @@ func (g *Gateway) SetRoutePolicySelectorByString(host, path, method string, sele
 	return err
 }
 
-// GetRouteHealthCheckOption is a convenient function to get the health check
-// option of the route.
-func (g *Gateway) GetRouteHealthCheckOption(host, path, method string) (HealthCheckOption, error) {
+// GetRouteHealthCheckerDuration is a convenient function to get the health
+// checker duration of the route.
+func (g *Gateway) GetRouteHealthCheckerDuration(host, path, method string) (HealthCheckerDuration, error) {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		return forwarder.GetHealthCheckOption(), nil
+		return forwarder.GetHealthCheckerDuration(), nil
 	}
-	return HealthCheckOption{}, err
+	return HealthCheckerDuration{}, err
 }
 
-// SetRouteHealthCheckOption is a convenient function to set the health check
-// option of the route.
-func (g *Gateway) SetRouteHealthCheckOption(host, path, method string, option HealthCheckOption) error {
+// SetRouteHealthCheckerDuration is a convenient function to set the health
+// checker duration of the route.
+func (g *Gateway) SetRouteHealthCheckerDuration(host, path, method string, d HealthCheckerDuration) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.SetHealthCheckOption(option)
+		forwarder.SetHealthCheckerDuration(d)
 	}
 	return err
 }
@@ -200,28 +226,8 @@ func (g *Gateway) DelRouteBackends(host, path, method string, backends ...Backen
 func (g *Gateway) DelRouteBackendsByString(host, path, method string, backends ...string) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.DelBackendsByString(backends...)
+		forwarder.DelBackendsByID(backends...)
 	}
 	return err
 }
-
-// GetBackendGroupManager returns the backend group manager by the host as the name.
-//
-// If the backend group manager does not exist, return nil.
-func (g *Gateway) GetBackendGroupManager(host string) *BackendGroupManager {
-	g.mlock.RLock()
-	m := g.bgms[host]
-	g.mlock.RUnlock()
-	return m
-}
-
-// GetBackendGroupManagers returns all the backend group manager.
-func (g *Gateway) GetBackendGroupManagers() (ms []*BackendGroupManager) {
-	g.mlock.RLock()
-	ms = make([]*BackendGroupManager, 0, len(g.bgms))
-	for _, m := range g.bgms {
-		ms = append(ms, m)
-	}
-	g.mlock.RUnlock()
-	return
-}
+*/

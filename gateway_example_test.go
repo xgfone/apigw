@@ -23,7 +23,6 @@ import (
 	"github.com/xgfone/apigw"
 	"github.com/xgfone/apigw/forward/lb"
 	"github.com/xgfone/apigw/forward/lb/backend"
-	slb "github.com/xgfone/go-service/loadbalancer"
 	"github.com/xgfone/ship/v4"
 )
 
@@ -77,19 +76,14 @@ func newPanicPlugin(config interface{}) (apigw.Middleware, error) {
 func ExampleGateway() {
 	host := "www.example.com" // Or the regexp host like `[a-zA-z0-9]+\.example\.com`
 
-	// Create the global health checker of the backend endpoint, that's, upstream server.
-	// But you can also ignore it and do not to use it.
-	healthChecker := slb.NewHealthCheck()
-	defer healthChecker.Stop()
-
 	// Initialize the gateway.
 	gw := lb.NewGateway() // We use lb.Gateway instead of apigw.Gateway.
 
-	// You can set the customized logger.
+	// (Optional): You can set the customized logger.
 	// gw.Router().SetLogger(logger)
 
-	// (Optional) Customize the host router manager based on the regular expression.
-	// The default implementation is based on the stdlib "regexp".
+	// (Optional): Customize the host router manager based on the regular expression.
+	//             The default implementation is based on the stdlib "regexp".
 	// gw.Router().SetNewRegexpHostRouter(newRegexpHostRouterFunc)
 
 	// Register the middlewares and the plugins.
@@ -101,10 +95,10 @@ func ExampleGateway() {
 	// Add the host domain before registering the route.
 	gw.AddHost(host)
 
-	// (Optional) Set the middlewares only for the given host.
+	// (Optional): Set the middlewares only for the given host.
 	gw.RegisterHostMiddlewares(host, gwMiddleware(host))
 
-	// (Optional) Set the NotFound handler for a certain host domain.
+	// (Optional): Set the NotFound handler for a certain host domain.
 	gw.SetHostNotFound(host, func(c *apigw.Context) error {
 		return c.Text(404, "no route: host=%s, method=%s, path=%s", host, c.Method(), c.Path())
 	})
@@ -112,16 +106,20 @@ func ExampleGateway() {
 	// Create some backend endpoints, such as HTTP, GRPC, etc.
 	backend1, _ := backend.NewHTTPBackend("127.0.0.1:8001", nil)
 	backend2, _ := backend.NewHTTPBackend("127.0.0.1:8002", nil)
+	backend3, _ := backend.NewHTTPBackend("127.0.0.1:8003", nil)
+	backend4, _ := backend.NewHTTPBackend("127.0.0.1:8004", nil)
 
 	// Create the route.
 	route := apigw.NewRoute(host, "/v1/:path", http.MethodGet)
 	forwarder := lb.NewForwarder(route.Name())
-	forwarder.HealthCheck = healthChecker                   // For the health check of backends, or not use it
-	forwarder.SetSessionTimeout(time.Second * 30)           // For session stick timeout, or not use
-	forwarder.SetSession(slb.NewMemorySession(time.Minute)) // For session stick manager, or not use
-	forwarder.AddBackends(backend1, backend2)               // Add the backends specific to the route
-	route.Forwarder = forwarder                             // Set the backend forwarder for the route
-	route.Plugins = []apigw.RoutePlugin{                    // Set the plugins which the route will use
+	forwarder.SetSessionTimeout(time.Second * 30) // For session stick timeout
+
+	// Add the backends specific to the route
+	forwarder.AddBackendWithChecker(backend1, nil, lb.BackendCheckerDurationZero)
+	forwarder.AddBackendWithChecker(backend2, nil, lb.BackendCheckerDurationZero)
+
+	route.Forwarder = forwarder          // Set the backend forwarder for the route
+	route.Plugins = []apigw.RoutePlugin{ // Set the plugins which the route will use
 		{Name: "token", Config: "authentication_token"},
 		{Name: "log"},
 
@@ -138,17 +136,16 @@ func ExampleGateway() {
 
 	// Backends can be added after the route is registered.
 	// And the backend supports the group, which is also separated by the host.
-	group := lb.NewGroupBackend("group_name", nil)
-	bgm := gw.GetBackendGroupManager(host)
-	bgm.AddBackendGroup(group)
+	group := gw.GetBackendGroupManager(host).AddOrNewBackendGroup("group_name")
+
 	// 1. Support to add the backend into the group before adding the group backend into the route forwarder.
-	backend3, _ := backend.NewHTTPBackend("127.0.0.1:8003", nil)
-	group.AddBackend(backend3)
+	group.AddBackendWithChecker(backend3, nil, lb.BackendCheckerDurationZero)
+
 	// 2. Add the backend group into the route forwarder.
-	forwarder.AddBackend(group)
+	forwarder.AddBackendGroup(group)
+
 	// 3. Support to add the backend into the group after adding the group backend into the route forwarder.
-	backend4, _ := backend.NewHTTPBackend("127.0.0.1:8004", nil)
-	group.AddBackend(backend4)
+	group.AddBackendWithChecker(backend4, nil, lb.BackendCheckerDurationZero)
 
 	// Start HTTP server.
 	gw.Router().Start("127.0.0.1:80").Wait()
@@ -157,26 +154,28 @@ func ExampleGateway() {
 	//
 	// $ curl -i http://127.0.0.1:80/v1/test -H 'Host: www.example.com'
 	// HTTP/1.1 401 Unauthorized
-	// Date: Wed, 06 Jan 2021 21:21:25 GMT
-	// Content-Length: 0
+	// Date: Fri, 25 Jun 2021 12:22:21 GMT
+	// Content-Length: 12
+	// Content-Type: text/plain; charset=utf-8
+	//
+	// Unauthorized
+	//
+	// $ curl -i http://127.0.0.1:80/v1/test -H 'Host: www.example.com' -H 'Authorization: token authentication_token'
+	// HTTP/1.1 200 OK
+	// Content-Length: 29
+	// Content-Type: application/json
+	// Date: Fri, 25 Jun 2021 12:23:20 GMT
+	// X-Server-Id: MTI3LjAuMC4xOjgwMDM=
+	//
+	// {"backend":"127.0.0.1:8003"}
 	//
 	//
 	// $ curl -i http://127.0.0.1:80/v1/test -H 'Host: www.example.com' -H 'Authorization: token authentication_token'
 	// HTTP/1.1 200 OK
 	// Content-Length: 29
 	// Content-Type: application/json
-	// Date: Wed, 06 Jan 2021 21:21:56 GMT
-	// Server: MTI3LjAuMC4x
-	//
-	// {"backend":"127.0.0.1:8002"}
-	//
-	//
-	// $ curl -i http://127.0.0.1:80/v1/test -H 'Host: www.example.com' -H 'Authorization: token authentication_token'
-	// HTTP/1.1 200 OK
-	// Content-Length: 29
-	// Content-Type: application/json
-	// Date: Wed, 06 Jan 2021 21:21:59 GMT
-	// Server: MTI3LjAuMC4x
+	// Date: Fri, 25 Jun 2021 12:24:57 GMT
+	// X-Server-Id: MTI3LjAuMC4xOjgwMDE=
 	//
 	// {"backend":"127.0.0.1:8001"}
 	//
@@ -184,7 +183,7 @@ func ExampleGateway() {
 	// $ curl -i http://127.0.0.1:80/v2/test -H 'Host: www.example.com' -H 'Authorization: token authentication_token'
 	// HTTP/1.1 404 Not Found
 	// Content-Type: text/plain; charset=UTF-8
-	// Date: Wed, 06 Jan 2021 21:22:03 GMT
+	// Date: Fri, 25 Jun 2021 12:25:43 GMT
 	// Content-Length: 57
 	//
 	// no route: host=www.example.com, method=GET, path=/v2/test

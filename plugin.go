@@ -38,25 +38,25 @@ type Plugin interface {
 type Plugins []Plugin
 
 // Sort sorts itself.
-func (ps Plugins) Sort()              { sort.Sort(ps) }
+func (ps Plugins) Sort()              { sort.Stable(ps) }
 func (ps Plugins) Len() int           { return len(ps) }
 func (ps Plugins) Less(i, j int) bool { return ps[i].Priority() < ps[j].Priority() }
 func (ps Plugins) Swap(i, j int)      { ps[i], ps[j] = ps[j], ps[i] }
 
 // NewPlugin returns a new plugin.
-func NewPlugin(name string, prio int, newPlugin func(interface{}) (Middleware, error)) Plugin {
-	return pluginer{name: name, prio: prio, newPlugin: newPlugin}
+func NewPlugin(name string, prio int, newf func(interface{}) (Middleware, error)) Plugin {
+	return plugin{name: name, prio: prio, newf: newf}
 }
 
-type pluginer struct {
-	prio      int
-	name      string
-	newPlugin func(interface{}) (Middleware, error)
+type plugin struct {
+	prio int
+	name string
+	newf func(interface{}) (Middleware, error)
 }
 
-func (p pluginer) Priority() int  { return p.prio }
-func (p pluginer) Name() string   { return p.name }
-func (p pluginer) String() string { return fmt.Sprintf("Plugin(name=%s)", p.name) }
-func (p pluginer) Plugin(config interface{}) (Middleware, error) {
-	return p.newPlugin(config)
+func (p plugin) Priority() int  { return p.prio }
+func (p plugin) Name() string   { return p.name }
+func (p plugin) String() string { return fmt.Sprintf("Plugin(name=%s)", p.name) }
+func (p plugin) Plugin(config interface{}) (Middleware, error) {
+	return p.newf(config)
 }

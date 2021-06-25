@@ -22,13 +22,13 @@ import (
 
 // ServiceDiscoveryLoader is used to load the service discovery.
 type ServiceDiscoveryLoader interface {
-	Name() string
 	ServiceDiscovery() (sd.ServiceDiscovery, error)
+	Name() string
 }
 
 type sdLoader struct {
-	name string
 	sd   func() (sd.ServiceDiscovery, error)
+	name string
 }
 
 // NewServiceDiscoveryLoader returns a new service discovery loader.

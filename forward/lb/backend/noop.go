@@ -16,6 +16,7 @@ package backend
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/xgfone/apigw/forward/lb"
 )
@@ -26,20 +27,18 @@ func NewNoopBackend(name string) lb.Backend {
 	return &noopBackend{name: name}
 }
 
-type noopBackend struct {
-	name  string
-	state lb.ConnectionState
+type noopBackend struct{ name string }
+
+func (b *noopBackend) String() string {
+	return fmt.Sprintf("NoopBackend(name=%s)", b.name)
 }
 
-func (b *noopBackend) Type() string                     { return "noop" }
-func (b *noopBackend) String() string                   { return b.name }
-func (b *noopBackend) State() lb.EndpointState          { return b.state.ToEndpointState() }
-func (b *noopBackend) IsHealthy(c context.Context) bool { return true }
+func (b *noopBackend) ID() string                 { return b.name }
+func (b *noopBackend) Type() string               { return "noop" }
+func (b *noopBackend) State() (s lb.BackendState) { return }
 func (b *noopBackend) MetaData() map[string]interface{} {
 	return map[string]interface{}{"name": b.name}
 }
-func (b *noopBackend) RoundTrip(c context.Context, r lb.Request) (interface{}, error) {
-	b.state.Inc()
-	defer b.state.Dec()
+func (b *noopBackend) RoundTrip(context.Context, lb.Request) (interface{}, error) {
 	return nil, nil
 }

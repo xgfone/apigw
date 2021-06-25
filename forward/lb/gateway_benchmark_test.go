@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apigw_test
+package lb
 
 import (
 	"context"
@@ -22,21 +22,17 @@ import (
 	"testing"
 
 	"github.com/xgfone/apigw"
-	"github.com/xgfone/apigw/forward/lb"
-	slb "github.com/xgfone/go-service/loadbalancer"
 )
 
-type fakeBackend struct {
-	name string
-}
+type fakeBackend struct{ name string }
 
-func newFakeBackend(name string) fakeBackend                                      { return fakeBackend{name: name} }
-func (b fakeBackend) Type() string                                                { return "fake" }
-func (b fakeBackend) String() string                                              { return b.name }
-func (b fakeBackend) State() (s slb.EndpointState)                                { return }
-func (b fakeBackend) MetaData() map[string]interface{}                            { return nil }
-func (b fakeBackend) IsHealthy(context.Context) bool                              { return true }
-func (b fakeBackend) RoundTrip(context.Context, slb.Request) (interface{}, error) { return nil, nil }
+func newFakeBackend(name string) fakeBackend { return fakeBackend{name: name} }
+
+func (b fakeBackend) ID() string                                              { return b.name }
+func (b fakeBackend) Type() string                                            { return "fake" }
+func (b fakeBackend) State() (s BackendState)                                 { return }
+func (b fakeBackend) MetaData() map[string]interface{}                        { return nil }
+func (b fakeBackend) RoundTrip(context.Context, Request) (interface{}, error) { return nil, nil }
 
 func newPanicErrorPlugin(config interface{}) (apigw.Middleware, error) {
 	return func(next apigw.Handler) apigw.Handler {
@@ -61,11 +57,12 @@ func newReqCountPlugin(config interface{}) (apigw.Middleware, error) {
 }
 
 func BenchmarkGatewayWithoutPlugins(b *testing.B) {
-	forwarder := lb.NewForwarder("benchmark")
-	forwarder.AddBackend(newFakeBackend("backend1"))
-	forwarder.AddBackend(newFakeBackend("backend2"))
+	forwarder := NewForwarder("benchmark")
+	forwarder.Session = nil
+	forwarder.AddBackendWithChecker(newFakeBackend("backend1"), nil, BackendCheckerDurationZero)
+	forwarder.AddBackendWithChecker(newFakeBackend("backend2"), nil, BackendCheckerDurationZero)
 
-	gw := apigw.NewGateway()
+	gw := NewGateway()
 	gw.AddHost("www.example.com")
 	gw.RegisterRoute(apigw.Route{
 		Matcher:   apigw.NewMatcher("www.example.com", "/v1/test", http.MethodGet),
@@ -83,9 +80,9 @@ func BenchmarkGatewayWithoutPlugins(b *testing.B) {
 }
 
 func BenchmarkGatewayWithPlugins(b *testing.B) {
-	forwarder := lb.NewForwarder("benchmark")
-	forwarder.AddBackend(newFakeBackend("backend1"))
-	forwarder.AddBackend(newFakeBackend("backend2"))
+	forwarder := NewForwarder("benchmark")
+	forwarder.AddBackendWithChecker(newFakeBackend("backend1"), nil, BackendCheckerDurationZero)
+	forwarder.AddBackendWithChecker(newFakeBackend("backend2"), nil, BackendCheckerDurationZero)
 
 	gw := apigw.NewGateway()
 	gw.AddHost("www.example.com")
