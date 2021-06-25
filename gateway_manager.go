@@ -21,45 +21,59 @@ var DefaultGatewayManager = NewGatewayManager()
 
 // GatewayManager is used to manage a group of gateways.
 type GatewayManager struct {
-	gateways sync.Map
+	lock     sync.RWMutex
+	gateways map[string]*Gateway
 }
 
 // NewGatewayManager returns a new gateway manager.
-func NewGatewayManager() *GatewayManager { return &GatewayManager{} }
+func NewGatewayManager() *GatewayManager {
+	return &GatewayManager{gateways: make(map[string]*Gateway)}
+}
 
 // RegisterGateway registers the gateway and returns true if successfully,
 // or returns false if the gateway has been registered.
 //
 // Notice: you can use this to manage all the global gateways.
 func (m *GatewayManager) RegisterGateway(g *Gateway) (ok bool) {
-	_, loaded := m.gateways.LoadOrStore(g.Name(), g)
-	return !loaded
+	name := g.Name()
+	m.lock.Lock()
+	if _, ok = m.gateways[name]; !ok {
+		m.gateways[name] = g
+	}
+	m.lock.Unlock()
+	return !ok
 }
 
 // UnregisterGateway unregisters the gateway by the name.
+//
+// If the gateway does not exist, do nothing and return nil.
 func (m *GatewayManager) UnregisterGateway(name string) *Gateway {
-	if value, loaded := m.gateways.LoadAndDelete(name); loaded {
-		return value.(*Gateway)
+	m.lock.Lock()
+	g, ok := m.gateways[name]
+	if ok {
+		delete(m.gateways, name)
 	}
-	return nil
+	m.lock.Unlock()
+	return g
 }
 
 // GetGateway returns the registered gateway by the name.
 //
 // Return nil if the gateway does not exist.
 func (m *GatewayManager) GetGateway(name string) *Gateway {
-	if value, ok := m.gateways.Load(name); ok {
-		return value.(*Gateway)
-	}
-	return nil
+	m.lock.RLock()
+	g := m.gateways[name]
+	m.lock.RUnlock()
+	return g
 }
 
 // GetGateways returns all the registered gateways.
 func (m *GatewayManager) GetGateways() (gateways []*Gateway) {
-	gateways = make([]*Gateway, 0, 8)
-	m.gateways.Range(func(key, value interface{}) bool {
-		gateways = append(gateways, value.(*Gateway))
-		return true
-	})
+	m.lock.RLock()
+	gateways = make([]*Gateway, 0, len(m.gateways))
+	for _, g := range m.gateways {
+		gateways = append(gateways, g)
+	}
+	m.lock.RUnlock()
 	return
 }
