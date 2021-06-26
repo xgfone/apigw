@@ -12,7 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package apigw implements the instance of the api gateway.
+// Package apigw is a simple, flexible, high performance api gateway library,
+// and you can use it to customize yourself api gateway quickly.
+//
+// Features
+//
+//   - Flexible, high performance and zero memory allocation for the core engine.
+//   - Support the virtual host, and different hosts has their own independent routes and NotFound.
+//   - Support the health check for the backend, that's upstream server.
+//   - Support the group of the upstream servers as the backend.
+//   - Support to customize the backend forwarder of the route.
+//   - Most of the functions are implemented by the plugin mode.
+//
 package apigw
 
 import (
