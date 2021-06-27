@@ -16,6 +16,7 @@ package lb
 
 import (
 	"sync"
+	"time"
 
 	"github.com/xgfone/apigw"
 )
@@ -100,7 +101,6 @@ func (g *Gateway) GetRouteForwarder(host, path, method string) (*Forwarder, erro
 
 /////////////////////////////////////////////////////////////////////////////
 
-/*
 // GetRouteSessionTimeout is a convenient function to get the session timeout
 // of the route.
 func (g *Gateway) GetRouteSessionTimeout(host, path, method string) (time.Duration, error) {
@@ -121,31 +121,8 @@ func (g *Gateway) SetRouteSessionTimeout(host, path, method string, timeout time
 	return err
 }
 
-// GetRouteSessionManager is a convenient function to get the session manager
-// of the route.
-func (g *Gateway) GetRouteSessionManager(host, path, method string) (Session, error) {
-	forwarder, err := g.GetRouteForwarder(host, path, method)
-	if err == nil {
-		return forwarder.GetSession(), nil
-	}
-	return nil, err
-}
-
-// SetRouteSessionManager is a convenient function to set the session manager
-// of the router.
-func (g *Gateway) SetRouteSessionManager(host, path, method string, s Session) error {
-	if forwarder, err := g.GetRouteForwarder(host, path, method); err != nil {
-		return err
-	} else if forwarder.GetSession().URL() == s.URL() {
-		return nil
-	} else if old := forwarder.SetSession(s); old != nil {
-		old.Close()
-	}
-	return nil
-}
-
 // GetRoutePolicySelector is a convenient function to get the policy selector
-// to forward the route.
+// to forward the request.
 func (g *Gateway) GetRoutePolicySelector(host, path, method string) (Selector, error) {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
@@ -155,7 +132,7 @@ func (g *Gateway) GetRoutePolicySelector(host, path, method string) (Selector, e
 }
 
 // SetRoutePolicySelector is a convenient function to set the policy selector
-// to forward the route.
+// to forward the request.
 func (g *Gateway) SetRoutePolicySelector(host, path, method string, s Selector) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
@@ -164,70 +141,73 @@ func (g *Gateway) SetRoutePolicySelector(host, path, method string, s Selector) 
 	return err
 }
 
-// SetRoutePolicySelectorByString is equal to SetRoutePolicySelector,
-// but get the session from the global registered selectors as the new session.
-func (g *Gateway) SetRoutePolicySelectorByString(host, path, method string, selector string) error {
+// SetRoutePolicySelectorByName is equal to SetRoutePolicySelector,
+// but get the session from the global registered selectors by the name.
+func (g *Gateway) SetRoutePolicySelectorByName(host, path, method, selectorName string) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.SetSelectorByString(selector)
+		forwarder.SetSelectorByName(selectorName)
 	}
 	return err
 }
 
-// GetRouteHealthCheckerDuration is a convenient function to get the health
-// checker duration of the route.
-func (g *Gateway) GetRouteHealthCheckerDuration(host, path, method string) (HealthCheckerDuration, error) {
+// GetRouteMaxTimeout is a convenient function to get the maximum timeout
+// to forward the request.
+func (g *Gateway) GetRouteMaxTimeout(host, path, method string) (time.Duration, error) {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		return forwarder.GetHealthCheckerDuration(), nil
+		return forwarder.GetMaxTimeout(), nil
 	}
-	return HealthCheckerDuration{}, err
+	return 0, err
 }
 
-// SetRouteHealthCheckerDuration is a convenient function to set the health
-// checker duration of the route.
-func (g *Gateway) SetRouteHealthCheckerDuration(host, path, method string, d HealthCheckerDuration) error {
+// SetRouteMaxTimeout is a convenient function to set the maximum timeout
+// to forward the request.
+func (g *Gateway) SetRouteMaxTimeout(host, path, method string, timeout time.Duration) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.SetHealthCheckerDuration(d)
+		forwarder.SetMaxTimeout(timeout)
 	}
 	return err
 }
 
-// GetRouteBackends is a convenient function to get all the backends of the route.
-func (g *Gateway) GetRouteBackends(host, path, method string) (bs []Backend, err error) {
+// GetRouteBackends is a convenient function to get all the backends
+// of the route forwarder.
+func (g *Gateway) GetRouteBackends(host, path, method string) ([]BackendInfo, error) {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		bs = forwarder.GetBackends()
+		return forwarder.GetBackends(), nil
 	}
-	return
+	return nil, err
 }
 
-// AddRouteBackends is a convenient function to add the backends into the route.
-func (g *Gateway) AddRouteBackends(host, path, method string, backends ...Backend) error {
+// AddRouteBackendGroup is a convenient function to add the backend group
+// into the route forwarder.
+func (g *Gateway) AddRouteBackendGroup(host, path, method string, group BackendGroup) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.AddBackends(backends...)
+		forwarder.AddBackendGroup(group)
 	}
 	return err
 }
 
-// DelRouteBackends is a convenient function to delete the backends from the route.
-func (g *Gateway) DelRouteBackends(host, path, method string, backends ...Backend) error {
+// AddRouteBackendWithChecker is a convenient function to add the backend
+// with the checker into the route forwarder.
+func (g *Gateway) AddRouteBackendWithChecker(host, path, method string,
+	backend Backend, checker BackendChecker, duration BackendCheckerDuration) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.DelBackends(backends...)
+		forwarder.AddBackendWithChecker(backend, checker, duration)
 	}
 	return err
 }
 
-// DelRouteBackendsByString is a convenient function to delete the backends
-// by the string from the route.
-func (g *Gateway) DelRouteBackendsByString(host, path, method string, backends ...string) error {
+// DelRouteBackendByID is a convenient function to delete the backend by the id
+// from the route forwarder.
+func (g *Gateway) DelRouteBackendByID(host, path, method string, backendID string) error {
 	forwarder, err := g.GetRouteForwarder(host, path, method)
 	if err == nil {
-		forwarder.DelBackendsByID(backends...)
+		forwarder.DelBackendByID(backendID)
 	}
 	return err
 }
-*/

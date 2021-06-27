@@ -121,9 +121,9 @@ func (f *Forwarder) GetSessionTimeout() time.Duration {
 	return f.LoadBalancer.GetSessionTimeout()
 }
 
-// SetSelector is equal to SetSelector, but get the selector from the global
-// registered selectors as the new session.
-func (f *Forwarder) SetSelectorByString(selectorName string) (err error) {
+// SetSelectorByName is equal to SetSelector, but get the selector
+// from the global registered selectors as the new session.
+func (f *Forwarder) SetSelectorByName(selectorName string) (err error) {
 	if s := loadbalancer.GetSelector(selectorName); s != nil {
 		f.SetSelector(s)
 		return nil
